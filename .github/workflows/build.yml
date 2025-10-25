@@ -3,10 +3,8 @@ name: Build
 on:
   push:
     branches: [ "**" ]
-    tags-ignore: [ "**" ]
+    tags: [ "*" ]
   pull_request:
-  release:
-    types: [published, edited]
 
 jobs:
   build:
@@ -39,7 +37,7 @@ jobs:
           if-no-files-found: error
 
       - name: Publish Artifact
-        if: ${{ github.event_name == 'release' }}
+        if: ${{ github.event_name == 'push' && github.ref_type == 'tag' }}
         run: gradle publish
         env:
           ORG_GRADLE_PROJECT_xpdustryUsername: "${{ secrets.XPDUSTRY_MAVEN_USERNAME }}"
