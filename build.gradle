@@ -1,96 +1,79 @@
-plugins {
-    id "de.undercouch.download" version "5.0.1"
+plugins{
+  id 'java-library'
+  id 'net.kyori.indra.publishing' version '3.1.3'
 }
 
-ext{
-    versions = [:]
-    libraries = [:]
+group = 'com.xpdustry.arc-lite'
+version = '1.0'
+
+repositories{
+    mavenCentral()
+    maven{ url 'https://jitpack.io' }
 }
 
-versions.robovm = "2.3.23"
-versions.junit = "4.11"
-versions.jnigen = "2.5.1"
-
-libraries.robovm = [
-    "com.mobidevelop.robovm:robovm-rt:${versions.robovm}",
-    "com.mobidevelop.robovm:robovm-objc:${versions.robovm}",
-    "com.mobidevelop.robovm:robovm-cocoatouch:${versions.robovm}"
-]
-
-libraries.junit = [
-    "junit:junit:${versions.junit}"
-]
-
-libraries.jnigen = [
-    "com.github.libgdx.gdx-jnigen:gdx-jnigen:$versions.jnigen"
-]
-
-allprojects{
-    apply plugin: 'maven-publish'
-    group = 'com.github.Anuken'
-    version = '1.0'
-
-    buildscript{
-        repositories{
-            mavenCentral()
-            google()
-            maven{ url 'https://jitpack.io' }
-        }
-
-        dependencies{
-            classpath "com.github.libgdx.gdx-jnigen:gdx-jnigen-gradle:2.5.1"
-        }
-    }
-
-    repositories{
-        mavenCentral()
-        google()
-        maven{ url 'https://jitpack.io' }
-    }
-
-    ext.aproj = { String module ->
-        if(findProject(module) != null){
-            return project(module)
-        }else{
-            return project(":Arc" + module)
-        }
-    }
-
-    tasks.withType(JavaCompile){
-        java{
-            sourceCompatibility = 1.8
-            targetCompatibility = 1.8
-        }
-        options.compilerArgs.addAll(['--release', '8'])
-        options.encoding = "UTF-8"
-    }
-
-    tasks.withType(Javadoc){
-        options{
-            addStringOption('Xdoclint:none', '-quiet')
-            addStringOption('-release', '17')
-            encoding('UTF-8')
-        }
-    }
+dependencies{
+    testImplementation 'junit:junit:4.11'
+    // Optional dependencies. See README
+    compileOnly "org.fusesource.jansi:jansi-native:1.1"
+    compileOnly "org.fusesource.jansi:jansi-native:1.1:windows32"
+    compileOnly "org.fusesource.jansi:jansi-native:1.1:windows64"
 }
 
-subprojects{
-    apply plugin: "java-library"
+tasks.withType(JavaCompile){
+    java.sourceCompatibility = 1.8
+    java.targetCompatibility = 1.8
+    options.compilerArgs.addAll(['--release', '8'])
+    options.encoding = 'UTF-8'
+}
 
-    compileJava{
-        options.fork = true
-        options.incremental = true
+javadoc.options.addStringOption('Xdoclint:none', '-quiet')
+
+java{
+    withJavadocJar()
+    withSourcesJar()
+}
+
+// Publishing
+signing{
+    def signingKey = findProperty('signingKey')
+    def signingPassword = findProperty('signingPassword')
+    useInMemoryPgpKeys(signingKey, signingPassword)
+}
+
+indra{
+    javaVersions{
+        target(8)
+        minimumToolchain(8)
     }
-
-    java{
-        withJavadocJar()
-        withSourcesJar()
+      
+    apache2License()
+    publishReleasesTo('xpdustry', 'https://maven.xpdustry.com/releases')
+  
+    github('xpdustry', rootProject.name){
+        ci(true)
+        issues(true)
+        scm(true)
     }
-
-    publishing{
-        publications{
-            maven(MavenPublication){
-                from components.java
+  
+    configurePublications{
+        from components.java
+    
+        pom{
+            organization{
+                name = 'Xpdustry'
+                url = 'https://www.xpdustry.com'
+            }
+      
+            developers{
+                developer{
+                  id = 'Anuken'
+                  url = 'https://github.com/Anuken'
+                }
+                
+                developer{
+                  id = 'ZetaMap'
+                  url = 'https://github.com/ZetaMap'
+                }
             }
         }
     }
