@@ -40,7 +40,7 @@ public class ColorCodes{
     public static final String[] codes, values;
 
     static{
-        if((OS.isWindows && !OS.hasEnv("WT_SESSION") || !install()) || OS.isAndroid){
+        if((OS.isWindows && !OS.hasEnv("WT_SESSION") && !install()) || OS.isAndroid){
             flush = reset = bold = underline = black = red = green = yellow = blue = purple = cyan = lightWhite
             = lightBlack = lightRed = lightGreen = lightYellow = lightBlue = lightMagenta = lightCyan
             = white = backDefault = backRed = backYellow = backBlue = backGreen = italic = "";
