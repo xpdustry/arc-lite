@@ -2,9 +2,9 @@ package arc.files;
 
 import arc.*;
 import arc.Files.*;
-import arc.struct.*;
 import arc.func.*;
 import arc.graphics.*;
+import arc.struct.*;
 import arc.util.*;
 import arc.util.io.*;
 
@@ -12,6 +12,7 @@ import java.io.*;
 import java.nio.*;
 import java.nio.channels.*;
 import java.nio.channels.FileChannel.*;
+import java.security.*;
 import java.util.zip.*;
 
 /**
@@ -24,7 +25,7 @@ import java.util.zip.*;
  * @author mzechner
  * @author Nathan Sweet
  */
-public class Fi{
+public class Fi implements Comparable<Fi>{
     protected File file;
     protected FileType type;
 
@@ -107,7 +108,18 @@ public class Fi{
 
     private static void copyFile(Fi source, Fi dest){
         try{
-            dest.write(source.read(), false);
+            if(source.file.exists() && dest.file.exists() && (!(source instanceof ZipFi))){
+                //FileChannel is faster than the InputStream method
+                try(FileInputStream is = new FileInputStream(source.file);
+                     FileOutputStream os = new FileOutputStream(dest.file);
+                     FileChannel inChannel = is.getChannel();
+                     FileChannel outChannel = os.getChannel()){
+
+                    inChannel.transferTo(0, inChannel.size(), outChannel);
+                }
+            }else{
+                dest.write(source.read(), false);
+            }
         }catch(Exception ex){
             throw new ArcRuntimeException("Error copying source file: " + source.file + " (" + source.type + ")\n" //
             + "To destination: " + dest.file + " (" + dest.type + ")", ex);
@@ -186,6 +198,21 @@ public class Fi{
     public File file(){
         if(type == FileType.external) return new File(Core.files.getExternalStoragePath(), file.getPath());
         return file;
+    }
+
+    /** @return the sha256 hash of this file. */
+    public byte[] sha256(){
+        try{
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            try(InputStream fis = read(); DigestInputStream dis = new DigestInputStream(fis, digest)){
+                byte[] buffer = new byte[8192];
+                while(dis.read(buffer) != -1) ;
+            }
+
+            return digest.digest();
+        }catch(IOException | NoSuchAlgorithmException e){
+            throw new ArcRuntimeException(e);
+        }
     }
 
     /**
@@ -927,6 +954,12 @@ public class Fi{
         return hash;
     }
 
+    @Override
+    public int compareTo(Fi fi){
+        return file.compareTo(fi.file);
+    }
+
+    @Override
     public String toString(){
         return file.getPath().replace('\\', '/');
     }

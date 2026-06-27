@@ -8,16 +8,70 @@ import arc.struct.*;
 import java.io.*;
 import java.net.*;
 import java.nio.charset.*;
+import java.security.*;
+import java.text.*;
 import java.util.*;
 import java.util.regex.*;
 
 public class Strings{
+    public static final Charset utf8 = Charset.forName("UTF-8");
+    public static final Charset ascii = Charset.forName("US-ASCII");
+
+    private static final byte[] hexArray = "0123456789ABCDEF".getBytes(ascii);
     private static StringBuilder tmp1 = new StringBuilder(), tmp2 = new StringBuilder();
     private static Pattern
         filenamePattern = Pattern.compile("[\0/\"<>|:*?\\\\]"),
+        unsafeFilenamePattern = Pattern.compile("[\0/\"'<>|:*!?\\\\]"),
         reservedFilenamePattern = Pattern.compile("(CON|AUX|PRN|NUL|(COM[0-9])|(LPT[0-9]))((\\..*$)|$)", Pattern.CASE_INSENSITIVE);
 
-    public static final Charset utf8 = Charset.forName("UTF-8");
+    /** @return sha256 hash of the given string */
+    public static byte[] sha256(String str){
+        try{
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            return digest.digest(str.getBytes(utf8));
+        }catch(NoSuchAlgorithmException e){
+            throw new ArcRuntimeException(e);
+        }
+    }
+
+    //https://stackoverflow.com/a/3758880
+    public static String formatByteCount(long bytes){
+        if(-1000 < bytes && bytes < 1000) return bytes + " B";
+
+        CharacterIterator ci = new StringCharacterIterator("kMGTPE");
+        while(bytes <= -999_950 || bytes >= 999_950){
+            bytes /= 1000;
+            ci.next();
+        }
+        return String.format("%.1f %cB", bytes / 1000.0, ci.current());
+    }
+
+    //https://stackoverflow.com/a/9855338
+    public static String bytesToHex(byte[] bytes){
+        byte[] hexChars = new byte[bytes.length * 2];
+        for(int j = 0; j < bytes.length; j++){
+            int v = bytes[j] & 0xFF;
+            hexChars[j * 2] = hexArray[v >>> 4];
+            hexChars[j * 2 + 1] = hexArray[v & 0x0F];
+        }
+        return new String(hexChars, utf8);
+    }
+
+    public static String getFileExtension(String path){
+        int dotIndex = path.lastIndexOf('.');
+        return dotIndex == -1 ? "" : path.substring(dotIndex + 1);
+    }
+
+    public static String getFileName(String path){
+        int index = path.lastIndexOf('/');
+        return index < 0 ? path : path.substring(index + 1);
+    }
+
+    public static String getFileNameWithoutExtension(String path){
+        String name = getFileName(path);
+        int dotIndex = name.lastIndexOf('.');
+        return dotIndex == -1 ? name : name.substring(0, dotIndex);
+    }
 
     /** @return whether the name matches the query; case-insensitive. Always returns true if query is empty. */
     public static boolean matches(String query, String name){
@@ -68,6 +122,22 @@ public class Strings{
     public static String getSimpleMessage(Throwable e){
         Throwable fcause = getFinalCause(e);
         return fcause.getMessage() == null ? fcause.getClass().getSimpleName() : fcause.getClass().getSimpleName() + ": " + fcause.getMessage();
+    }
+
+    public static String getSimpleMessages(Throwable e){
+        StringBuilder builder = new StringBuilder();
+        while(e != null){
+            if(e.getMessage() != null){
+                builder.append(e.getClass().getSimpleName()).append(": ").append(e.getMessage());
+            }else{
+                builder.append(e.getClass().getSimpleName());
+            }
+            e = e.getCause();
+            if(e != null){
+                builder.append(" -> ");
+            }
+        }
+        return builder.toString();
     }
 
     public static String getFinalMessage(Throwable e){
@@ -224,6 +294,10 @@ public class Strings{
         return filenamePattern.matcher(str).replaceAll("_");
     }
 
+    public static boolean isSafeFilename(String name){
+        return !name.equals(".") && !name.equals("..") && !reservedFilenamePattern.matcher(name).matches() && !unsafeFilenamePattern.matcher(name).find();
+    }
+
     public static String encode(String str){
         try{
             return URLEncoder.encode(str, "UTF-8");
@@ -247,10 +321,23 @@ public class Strings{
         if(args.length > 0){
             for(int i = 0, argi = 0, n = text.length(); i < n; i++){
                 char c = text.charAt(i);
-                if(c == '@' && argi < args.length) out.append(args[argi++]);
+                if(c == '@' && argi < args.length) out.append(stringify(args[argi++]));
                 else out.append(c);
             }
         }else out.append(text);
+    }
+
+    static String stringify(Object o){
+        if(o instanceof Object[]) return Arrays.deepToString((Object[])o);
+        else if(o instanceof int[]) return Arrays.toString((int[])o);
+        else if(o instanceof long[]) return Arrays.toString((long[])o);
+        else if(o instanceof float[]) return Arrays.toString((float[])o);
+        else if(o instanceof double[]) return Arrays.toString((double[])o);
+        else if(o instanceof char[]) return Arrays.toString((char[])o);
+        else if(o instanceof short[]) return Arrays.toString((short[])o);
+        else if(o instanceof byte[]) return Arrays.toString((byte[])o);
+        else if(o instanceof boolean[]) return Arrays.toString((boolean[])o);
+        return String.valueOf(o);
     }
 
     public static String join(String separator, String... strings){
@@ -292,8 +379,7 @@ public class Strings{
                 }else if(j == 0){
                     dp[i][j] = i;
                 }else{
-                    dp[i][j] = Math.min(Math.min(dp[i - 1][j - 1]
-                    + (x.charAt(i - 1) == y.charAt(j - 1) ? 0 : 1),
+                    dp[i][j] = Math.min(Math.min(dp[i - 1][j - 1] + (x.charAt(i - 1) == y.charAt(j - 1) ? 0 : 1),
                     dp[i - 1][j] + 1),
                     dp[i][j - 1] + 1);
                 }
@@ -327,6 +413,35 @@ public class Strings{
             System.arraycopy(multiple, 0, multiple, copied, copied);
         System.arraycopy(multiple, 0, multiple, copied, limit - copied);
         return new String(multiple);
+    }
+
+    /** Returns the case-independent biased levenshtein distance between two strings. */
+    public static float biasedLevenshtein(String x, String y){
+        x = x.toLowerCase(Locale.ROOT);
+        y = y.toLowerCase(Locale.ROOT);
+
+        int[][] dp = new int[x.length() + 1][y.length() + 1];
+
+        for(int i = 0; i <= x.length(); i++){
+            for(int j = 0; j <= y.length(); j++){
+                if(i == 0){
+                    dp[i][j] = j;
+                }else if(j == 0){
+                    dp[i][j] = i;
+                }else{
+                    dp[i][j] = Math.min(Math.min(dp[i - 1][j - 1]
+                    + (x.charAt(i - 1) == y.charAt(j - 1) ? 0 : 1),
+                    dp[i - 1][j] + 1),
+                    dp[i][j - 1] + 1);
+                }
+            }
+        }
+
+        float output = dp[x.length()][y.length()];
+        if(y.startsWith(x) || x.startsWith(y)){
+            return output / 3f;
+        }
+        return (y.contains(x) || x.contains(y)) ? output / 1.5f : output;
     }
 
     public static String animated(float time, int length, float scale, String replacement){
@@ -652,6 +767,21 @@ public class Strings{
         }catch(Exception e){
             return defaultValue;
         }
+    }
+
+    /** Returns a new, blank color if parsing failed. */
+    public static Color parseColor(String s){
+        return parseColor(s, new Color());
+    }
+
+    public static Color parseColor(String s, Color defaultValue){
+        Color col = Colors.get(s);
+        try{
+            if(col == null) col = Color.valueOf(s);
+        }catch(Exception e){
+            col = defaultValue;
+        }
+        return col;
     }
 
     public static String autoFixed(float value, int max){

@@ -93,6 +93,12 @@ public class ObjectSet<T> implements Iterable<T>, Eachable<T>{
         return set;
     }
 
+    public ObjectSet<T> copy(){
+        ObjectSet<T> result = new ObjectSet<>();
+        result.addAll(this);
+        return result;
+    }
+
     /** Allocates a new set with all elements that match the predicate.*/
     public ObjectSet<T> select(Boolf<T> predicate){
         ObjectSet<T> arr = new ObjectSet<>();
@@ -111,6 +117,15 @@ public class ObjectSet<T> implements Iterable<T>, Eachable<T>{
         for(T t : this){
             cons.get(t);
         }
+    }
+
+    public T find(Boolf<T> predicate){
+        for(T t : this){
+            if(predicate.get(t)){
+                return t;
+            }
+        }
+        return null;
     }
 
     /**

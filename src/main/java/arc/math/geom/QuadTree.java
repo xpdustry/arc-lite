@@ -4,8 +4,6 @@ import arc.func.*;
 import arc.math.geom.QuadTree.*;
 import arc.struct.*;
 
-import java.util.*;
-
 /**
  * A basic quad tree.
  * <p>
@@ -43,14 +41,19 @@ public class QuadTree<T extends QuadTreeObject>{
         }
         leaf = false;
 
+        Object[] items = objects.items;
+
         // Transfer objects to children if they fit entirely in one
-        for(Iterator<T> iterator = objects.iterator(); iterator.hasNext();){
-            T obj = iterator.next();
+        for(int i = 0; i < objects.size; i++){
+            T obj = (T)items[i];
             hitbox(obj);
             QuadTree<T> child = getFittingChild(tmp);
             if(child != null){
                 child.insert(obj);
-                iterator.remove();
+                objects.size --;
+                items[i] = items[objects.size];
+                items[objects.size] = null;
+                i --;
             }
         }
     }
@@ -202,6 +205,26 @@ public class QuadTree<T extends QuadTreeObject>{
         }
 
         return objects.contains(o -> {
+            hitbox(o);
+            return tmp.overlaps(x, y, width, height) && out.get(o);
+        });
+    }
+
+    /**
+     * Tries to find any object matching the predicate in this tree.
+     * <p>
+     * This will never result in false positives.
+     */
+    public T find(float x, float y, float width, float height, Boolf<T> out){
+        if(!leaf){
+            T result;
+            if(topLeft.bounds.overlaps(x, y, width, height) && (result = topLeft.find(x, y, width, height, out)) != null) return result;
+            if(topRight.bounds.overlaps(x, y, width, height) && (result = topRight.find(x, y, width, height, out)) != null) return result;
+            if(botLeft.bounds.overlaps(x, y, width, height) && (result = botLeft.find(x, y, width, height, out)) != null) return result;
+            if(botRight.bounds.overlaps(x, y, width, height)&& (result = botRight.find(x, y, width, height, out)) != null) return result;
+        }
+
+        return objects.find(o -> {
             hitbox(o);
             return tmp.overlaps(x, y, width, height) && out.get(o);
         });

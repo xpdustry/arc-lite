@@ -1,6 +1,8 @@
 package arc;
 
-import arc.util.I18NBundle;
+import arc.util.*;
+
+import java.util.concurrent.*;
 
 /** Global references to all of Arc's core modules. */
 public class Core{
@@ -8,4 +10,7 @@ public class Core{
     public static Files files;
     public static Settings settings;
     public static I18NBundle bundle = I18NBundle.createEmptyBundle();
+
+    public static ExecutorService executor = Threads.executor("Main Executor", OS.cores);
+
 }

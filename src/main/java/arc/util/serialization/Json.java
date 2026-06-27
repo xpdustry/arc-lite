@@ -5,6 +5,7 @@ import arc.struct.*;
 import arc.struct.Queue;
 import arc.util.*;
 import arc.util.io.*;
+import arc.util.Timer;
 import arc.util.serialization.JsonWriter.*;
 
 import java.io.*;
@@ -406,6 +407,7 @@ public class Json{
 
     private Object[] getDefaultValues(Class type){
         if(!usePrototypes) return null;
+        if(type.isAnonymousClass()) type = type.getSuperclass();
         if(classToDefaultValues.containsKey(type)) return classToDefaultValues.get(type);
         Object object;
         try{
@@ -1121,7 +1123,6 @@ public class Json{
     public <T> T readValue(Class<T> type, Class elementType, JsonValue jsonData){
         return readValue(type, elementType, (Class)null, jsonData);
     }
-
     /**
      * @param type May be null if the type is unknown.
      * @param elementType May be null if the type is unknown.
@@ -1133,15 +1134,7 @@ public class Json{
         if(jsonData.isObject()){
             String className = isTypeNameSet() ? jsonData.getString(typeName, null) : null;
             if(className != null){
-                jsonData.remove(typeName);
-                type = getClass(className);
-                if(type == null){
-                    try{
-                        type = (Class<T>)Class.forName(className);
-                    }catch(Throwable e){
-                        throw new SerializationException(e);
-                    }
-                }
+                type = resolveClass(className);
             }
             
             if(type == null){
@@ -1250,6 +1243,19 @@ public class Json{
                 throw new SerializationException("Error copying field: " + fromField.getName(), ex);
             }
         }
+    }
+
+    protected <T> Class<T> resolveClass(String className){
+        Class<T> type = getClass(className);
+        if(type == null){
+            try{
+                type = (Class<T>)Class.forName(className);
+                if(Timer.class.isAssignableFrom(type)) throw new RuntimeException("Invalid class type.");
+            }catch(Throwable ex){
+                throw new SerializationException(ex);
+            }
+        }
+        return type;
     }
 
     private String convertToString(Enum e){
@@ -1363,8 +1369,7 @@ public class Json{
         public @Nullable Class keyType;
 
         public FieldMetadata(Field field){
-            boolean isMap = ObjectMap.class.isAssignableFrom(field.getType())
-            || Map.class.isAssignableFrom(field.getType());
+            boolean isMap = ObjectMap.class.isAssignableFrom(field.getType()) || Map.class.isAssignableFrom(field.getType());
 
             this.field = field;
             this.elementType = getElementType(field, isMap ? 1 : 0);
