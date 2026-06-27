@@ -17,6 +17,7 @@ public class HeadlessApplication implements Application{
     protected long renderInterval;
     protected Thread mainLoopThread;
     protected boolean running = true;
+
     long frameId = -1;
     float deltaTime = 0;
     long frameStart = 0;
@@ -32,13 +33,15 @@ public class HeadlessApplication implements Application{
         this(listener, 1f / 60f, exceptionHandler);
     }
 
+    @SuppressWarnings("deprecation")
     public HeadlessApplication(ApplicationListener listener, float renderIntervalSec, Cons<Throwable> exceptionHandler){
         addListener(listener);
         this.exceptionHandler = exceptionHandler;
-        
+
         Core.settings = new Settings();
         Core.app = this;
         Core.files = new MockFiles();
+        Core.graphics = new MockGraphics(this);
 
         renderInterval = renderIntervalSec > 0 ? (long)(renderIntervalSec * 1000000000f) : (renderIntervalSec < 0 ? -1 : 0);
 
@@ -106,11 +109,11 @@ public class HeadlessApplication implements Application{
         frames++;
     }
 
-    
+
     public void incrementFrameId() {
         frameId++;
     }
-    
+
     @Override
     public long getFrameId(){
         return frameId;
@@ -134,16 +137,6 @@ public class HeadlessApplication implements Application{
     @Override
     public ApplicationType getType(){
         return ApplicationType.headless;
-    }
-
-    @Override
-    public String getClipboardText(){
-        return null;
-    }
-
-    @Override
-    public void setClipboardText(String text){
-
     }
 
     @Override

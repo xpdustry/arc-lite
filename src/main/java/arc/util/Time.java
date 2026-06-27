@@ -16,14 +16,14 @@ public class Time{
     /** Global time values. Do not change. */
     public static float time, globalTime;
 
-    public static final long nanosPerMilli = 1000000;
+    public static final long millisPerSecond = 1000, nanosPerMilli = 1_000_000, nanosPerSecond = 1_000_000_000;
 
     private static double timeRaw, globalTimeRaw;
 
     private static Seq<DelayRun> runs = new Seq<>();
     private static Seq<DelayRun> removal = new Seq<>();
     private static LongSeq marks = new LongSeq();
-    private static Floatp deltaimpl = () -> Math.min(Core.app.getDeltaTime() * 60f, 3f);
+    private static Floatp deltaimpl = () -> Math.min(Core.app.getDeltaTime() * toSeconds, 3f);
 
     public static Seq<DelayRun> getRuns(){
         return runs;
@@ -43,7 +43,7 @@ public class Time{
 
     /** Runs a task with a delay of several ticks. Unless the application is closed, this task will always complete. */
     public static Task runTask(float delay, Runnable r){
-        return Timer.schedule(r, delay / 60f);
+        return Timer.schedule(r, delay / toSeconds);
     }
 
     public static void mark(){
@@ -55,12 +55,12 @@ public class Time{
         if(marks.size == 0){
             return -1;
         }else{
-            return timeSinceNanos(marks.pop()) / 1000000f;
+            return timeSinceNanos(marks.pop()) / (float)nanosPerMilli;
         }
     }
 
     public static void updateGlobal(){
-        globalTimeRaw += Core.app.getDeltaTime()*60f;
+        globalTimeRaw += Core.app.getDeltaTime() * toSeconds;
         delta = deltaimpl.get();
 
         if(Double.isInfinite(timeRaw) || Double.isNaN(timeRaw)){
@@ -118,6 +118,11 @@ public class Time{
         return System.nanoTime();
     }
 
+    /** @return The current value of the system timer, in milliseconds. */
+    public static long nanosMillis(){
+        return nanosToMillis(System.nanoTime());
+    }
+
     /** @return the difference, measured in milliseconds, between the current time and midnight, January 1, 1970 UTC. */
     public static long millis(){
         return System.currentTimeMillis();
@@ -143,21 +148,26 @@ public class Time{
 
     /**
      * Get the time in nanos passed since a previous time
-     * @param prevTime - must be nanoseconds
-     * @return - time passed since prevTime in nanoseconds
+     * @param prevTime must be nanoseconds
+     * @return time passed since prevTime in nanoseconds
      */
     public static long timeSinceNanos(long prevTime){
         return nanos() - prevTime;
     }
 
-    public static float millisSinceNanos(long prevTime){
-        return (nanos() - prevTime) / (float)nanosPerMilli;
+    /**
+     * Get the time in nanos passed since a previous time
+     * @param prevTime must be nanoseconds
+     * @return time passed since prevTime in milliseconds
+     */
+    public static long millisSinceNanos(long prevTime){
+        return (nanos() - prevTime) / nanosPerMilli;
     }
 
     /**
      * Get the time in millis passed since a previous time
-     * @param prevTime - must be milliseconds
-     * @return - time passed since prevTime in milliseconds
+     * @param prevTime must be milliseconds
+     * @return time passed since prevTime in milliseconds
      */
     public static long timeSinceMillis(long prevTime){
         return millis() - prevTime;

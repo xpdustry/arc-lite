@@ -16,14 +16,13 @@ import java.nio.channels.SocketChannel;
  * @author Nathan Sweet <misc@n4te.com>
  */
 public class Connection{
-    protected int id = -1;
+    int id = -1;
     protected String name;
     EndPoint endPoint;
     TcpConnection tcp;
     UdpConnection udp;
     InetSocketAddress udpRemoteAddress;
-    protected NetListener[] listeners = {};
-    private final Object listenerLock = new Object();
+    protected final DispatchListener listeners = new DispatchListener(true);
     protected int lastPingID;
     protected long lastPingSendTime;
     protected int returnTripTime;
@@ -174,66 +173,26 @@ public class Connection{
      * @param listener The listener to add.
      */
     public void addListener(NetListener listener){
-        if(listener == null)
-            throw new IllegalArgumentException("listener cannot be null.");
-        synchronized(listenerLock){
-            NetListener[] listeners = this.listeners;
-            int n = listeners.length;
-            for(int i = 0; i < n; i++)
-                if(listener == listeners[i])
-                    return;
-            NetListener[] newListeners = new NetListener[n + 1];
-            newListeners[0] = listener;
-            System.arraycopy(listeners, 0, newListeners, 1, n);
-            this.listeners = newListeners;
-        }
+        listeners.addListener(listener);
     }
 
     public void removeListener(NetListener listener){
-        if(listener == null)
-            throw new IllegalArgumentException("listener cannot be null.");
-        synchronized(listenerLock){
-            NetListener[] listeners = this.listeners;
-            int n = listeners.length;
-            if(n == 0)
-                return;
-            NetListener[] newListeners = new NetListener[n - 1];
-            for(int i = 0, ii = 0; i < n; i++){
-                NetListener copyListener = listeners[i];
-                if(listener == copyListener)
-                    continue;
-                if(ii == n - 1)
-                    return;
-                newListeners[ii++] = copyListener;
-            }
-            this.listeners = newListeners;
-        }
+        listeners.removeListener(listener);
     }
 
-    void notifyConnected(){
-        NetListener[] listeners = this.listeners;
-        for(NetListener listener : listeners){
-            listener.connected(this);
-        }
+    protected void notifyConnected(){
+        listeners.connected(this);
     }
 
-    void notifyDisconnected(DcReason reason){
-        NetListener[] listeners = this.listeners;
-        for(NetListener listener : listeners){
-            listener.disconnected(this, reason);
-        }
+    protected void notifyDisconnected(DcReason reason){
+        listeners.disconnected(this, reason);
     }
 
-    void notifyIdle(){
-        NetListener[] listeners = this.listeners;
-        for(NetListener listener : listeners){
-            listener.idle(this);
-            if(!isIdle())
-                break;
-        }
+    protected void notifyIdle(){
+        listeners.idle(this);
     }
 
-    void notifyReceived(Object object){
+    protected void notifyReceived(Object object){
         if(object instanceof Ping){
             Ping ping = (Ping)object;
             if(ping.isReply){
@@ -247,10 +206,7 @@ public class Connection{
             }
         }
 
-        NetListener[] listeners = this.listeners;
-        for(NetListener listener : listeners){
-            listener.received(this, object);
-        }
+        listeners.received(this, object);
     }
 
     /**
@@ -318,6 +274,7 @@ public class Connection{
         tcp.idleThreshold = idleThreshold;
     }
 
+    @Override
     public String toString(){
         if(name != null)
             return name;

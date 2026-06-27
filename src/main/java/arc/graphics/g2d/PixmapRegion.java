@@ -1,4 +1,7 @@
-package arc.graphics;
+// Kept in this folder for compatibility
+package arc.graphics.g2d;
+
+import arc.graphics.*;
 
 /** Defines a region of a pixmap, like a TextureRegion. */
 public class PixmapRegion{

@@ -88,6 +88,12 @@ public class LongMap<V> implements Iterable<LongMap.Entry<V>>{
         hasZeroValue = map.hasZeroValue;
     }
 
+    public void each(Cons2<Long, V> cons){
+        for(Entry<V> entry : entries()){
+            cons.get(entry.key, entry.value);
+        }
+    }
+
     public V put(long key, V value){
         if(key == 0){
             V oldValue = zeroValue;
@@ -552,6 +558,7 @@ public class LongMap<V> implements Iterable<LongMap.Entry<V>>{
         return (int)((h ^ h >>> hashShift) & mask);
     }
 
+    @Override
     public int hashCode(){
         int h = 0;
         if(hasZeroValue && zeroValue != null){
@@ -573,6 +580,7 @@ public class LongMap<V> implements Iterable<LongMap.Entry<V>>{
         return h;
     }
 
+    @Override
     public boolean equals(Object obj){
         if(obj == this) return true;
         if(!(obj instanceof LongMap)) return false;
@@ -582,9 +590,7 @@ public class LongMap<V> implements Iterable<LongMap.Entry<V>>{
         if(hasZeroValue){
             if(other.zeroValue == null){
                 if(zeroValue != null) return false;
-            }else{
-                if(!other.zeroValue.equals(zeroValue)) return false;
-            }
+            }else if(!other.zeroValue.equals(zeroValue)) return false;
         }
         long[] keyTable = this.keyTable;
         V[] valueTable = this.valueTable;
@@ -594,14 +600,13 @@ public class LongMap<V> implements Iterable<LongMap.Entry<V>>{
                 V value = valueTable[i];
                 if(value == null){
                     if(!other.containsKey(key) || other.get(key) != null) return false;
-                }else{
-                    if(!value.equals(other.get(key))) return false;
-                }
+                }else if(!value.equals(other.get(key))) return false;
             }
         }
         return true;
     }
 
+    @Override
     public String toString(){
         if(size == 0) return "[]";
         StringBuilder buffer = new StringBuilder(32);
@@ -732,6 +737,7 @@ public class LongMap<V> implements Iterable<LongMap.Entry<V>>{
         public long key;
         public V value;
 
+        @Override
         public String toString(){
             return key + "=" + value;
         }
@@ -787,6 +793,11 @@ public class LongMap<V> implements Iterable<LongMap.Entry<V>>{
             currentIndex = INDEX_ILLEGAL;
             map.size--;
         }
+
+        public boolean hasNext(){
+            if(!valid) throw new ArcRuntimeException("#iterator() cannot be used nested.");
+            return hasNext;
+        }
     }
 
     public static class Entries<V> extends MapIterator<V> implements Iterable<Entry<V>>, Iterator<Entry<V>>{
@@ -813,15 +824,11 @@ public class LongMap<V> implements Iterable<LongMap.Entry<V>>{
             return entry;
         }
 
-        public boolean hasNext(){
-            if(!valid) throw new ArcRuntimeException("#iterator() cannot be used nested.");
-            return hasNext;
-        }
-
         public Iterator<Entry<V>> iterator(){
             return this;
         }
 
+        @Override
         public void remove(){
             super.remove();
         }
@@ -830,11 +837,6 @@ public class LongMap<V> implements Iterable<LongMap.Entry<V>>{
     public static class Values<V> extends MapIterator<V> implements Iterable<V>, Iterator<V>{
         public Values(LongMap<V> map){
             super(map);
-        }
-
-        public boolean hasNext(){
-            if(!valid) throw new ArcRuntimeException("#iterator() cannot be used nested.");
-            return hasNext;
         }
 
         public V next(){
@@ -862,17 +864,22 @@ public class LongMap<V> implements Iterable<LongMap.Entry<V>>{
             return array;
         }
 
+        @Override
         public void remove(){
             super.remove();
         }
     }
 
-    public static class Keys extends MapIterator<Object>{
+    public static class Keys extends MapIterator<Object> implements Iterable<Long>, Iterator<Long>{
         public Keys(LongMap<?> map){
             super((LongMap<Object>)map);
         }
 
-        public long next(){
+        public Long next(){
+            return nextKey();
+        }
+
+        public long nextKey(){
             if(!hasNext) throw new NoSuchElementException();
             if(!valid) throw new ArcRuntimeException("#iterator() cannot be used nested.");
             long key = nextIndex == INDEX_ZERO ? 0 : map.keyTable[nextIndex];
@@ -887,6 +894,11 @@ public class LongMap<V> implements Iterable<LongMap.Entry<V>>{
             while(hasNext)
                 array.add(next());
             return array;
+        }
+
+        @Override
+        public Iterator<Long> iterator(){
+            return this;
         }
     }
 }

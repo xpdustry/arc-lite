@@ -1,5 +1,6 @@
 package arc.struct;
 
+import arc.func.Longc;
 import arc.math.Mathf;
 
 import java.util.Arrays;
@@ -69,6 +70,12 @@ public class LongSeq{
     /** @see #LongSeq(long[]) */
     public static LongSeq with(long... array){
         return new LongSeq(array);
+    }
+
+    public void each(Longc consumer){
+        for(int i = 0; i < size; i++){
+            consumer.get(items[i]);
+        }
     }
 
     public void add(long value){
@@ -361,6 +368,7 @@ public class LongSeq{
         return array;
     }
 
+    @Override
     public int hashCode(){
         if(!ordered) return super.hashCode();
         long[] items = this.items;
@@ -370,6 +378,7 @@ public class LongSeq{
         return h;
     }
 
+    @Override
     public boolean equals(Object object){
         if(object == this) return true;
         if(!ordered) return false;
@@ -385,6 +394,7 @@ public class LongSeq{
         return true;
     }
 
+    @Override
     public String toString(){
         if(size == 0) return "[]";
         long[] items = this.items;

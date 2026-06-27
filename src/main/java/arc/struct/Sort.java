@@ -28,7 +28,7 @@ import java.util.Comparator;
 @SuppressWarnings({"unchecked", "rawtypes"})
 public class Sort{
     private static ThreadLocal<Sort> instance = Threads.local(Sort::new);
-    
+
     private TimSort timSort;
     private ComparableTimSort comparableTimSort;
 

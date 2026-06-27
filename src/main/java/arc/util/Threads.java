@@ -108,6 +108,7 @@ public class Threads{
         }
     }
 
+    //this creates an implicit dependency to all the framework...
     /** Throws an exception in the main game thread.*/
     public static void throwAppException(Throwable t){
         Core.app.post(() -> {

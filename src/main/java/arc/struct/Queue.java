@@ -218,16 +218,14 @@ public class Queue<T> implements Iterable<T>, Eachable<T>{
                 for(int i = 0; i < tail; i++)
                     if(values[i] == value) return i + values.length - head;
             }
+        }else if(head < tail){
+            for(int i = head; i < tail; i++)
+                if(value.equals(values[i])) return i - head;
         }else{
-            if(head < tail){
-                for(int i = head; i < tail; i++)
-                    if(value.equals(values[i])) return i - head;
-            }else{
-                for(int i = head, n = values.length; i < n; i++)
-                    if(value.equals(values[i])) return i - head;
-                for(int i = 0; i < tail; i++)
-                    if(value.equals(values[i])) return i + values.length - head;
-            }
+            for(int i = head, n = values.length; i < n; i++)
+                if(value.equals(values[i])) return i - head;
+            for(int i = 0; i < tail; i++)
+                if(value.equals(values[i])) return i + values.length - head;
         }
         return -1;
     }
@@ -447,6 +445,7 @@ public class Queue<T> implements Iterable<T>, Eachable<T>{
         return sb.toString();
     }
 
+    @Override
     public int hashCode(){
         final int size = this.size;
         final T[] values = this.values;
@@ -467,6 +466,7 @@ public class Queue<T> implements Iterable<T>, Eachable<T>{
         return hash;
     }
 
+    @Override
     public boolean equals(Object o){
         if(this == o) return true;
         if(!(o instanceof Queue)) return false;
@@ -518,12 +518,12 @@ public class Queue<T> implements Iterable<T>, Eachable<T>{
             }
 
             if(iterator1.done){
-                iterator1.reset();;
+                iterator1.reset();
                 return iterator1;
             }
 
             if(iterator2.done){
-                iterator2.reset();;
+                iterator2.reset();
                 return iterator2;
             }
             //allocate new iterator in the case of 3+ nested loops.

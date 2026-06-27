@@ -4,6 +4,7 @@ import arc.*;
 import arc.files.*;
 import arc.func.*;
 import arc.graphics.PixmapIO.*;
+import arc.graphics.g2d.*;
 import arc.math.*;
 import arc.util.*;
 
@@ -11,6 +12,8 @@ import java.io.*;
 import java.nio.*;
 
 /**
+ * <b>Note: Native buffers loading and copying have been removed as there is no bundled libraries in this version.</b>
+ *
  * <p>
  * A Pixmap represents an image in memory. It has a width and height expressed in pixels, with each pixel being stored in RGBA8888 format.
  * Coordinates of pixels are specified with respect to the top left corner of the image, with the x-axis pointing to the right and the y-axis pointing downwards.
@@ -28,26 +31,11 @@ import java.nio.*;
  * @author badlogicgames@gmail.com
  */
 public class Pixmap implements Disposable{
-    private static final boolean supportsBufferCopy = OS.javaVersionNumber >= 16 || (OS.isAndroid && Core.app != null && Core.app.getVersion() >= 35);
-
     /** Size of the pixmap. Do not modify unless you know what you are doing. */
     public int width, height;
 
     /** Internal data, arranged as RGBA with 1 byte per component. This buffer must be direct or natively-allocated. */
     public ByteBuffer pixels;
-
-    /**
-     * When natives are present, this handle is the address of the memory region.
-     * When this pixmap is disposed/uninitialized, this value is 0.
-     * When natives are not present, this value is -1.
-     */
-    long handle;
-
-    static{
-        if(!supportsBufferCopy && !OS.isIos){
-            UnsafeBuffers.checkInit();
-        }
-    }
 
     /** Creates a new Pixmap instance with the given width and height. */
     public Pixmap(int width, int height){
@@ -87,7 +75,6 @@ public class Pixmap implements Disposable{
         this.width = width;
         this.height = height;
         this.pixels = buffer;
-        this.handle = -1;
 
         buffer.position(0).limit(buffer.capacity());
     }
@@ -427,72 +414,70 @@ public class Pixmap implements Disposable{
                     }
                 }
             }
-        }else{
-            if(filtering){
-                //blit with bilinear filtering
-                float x_ratio = ((float)srcWidth - 1) / dstWidth;
-                float y_ratio = ((float)srcHeight - 1) / dstHeight;
-                int rX = Math.max(Mathf.round(x_ratio), 1), rY = Math.max(Mathf.round(y_ratio), 1);
-                float xdiff, ydiff;
-                int spitch = 4 * owidth;
-                int dx, dy, sx, sy, i = 0, j;
-                ByteBuffer spixels = pixmap.pixels;
+        }else if(filtering){
+            //blit with bilinear filtering
+            float x_ratio = ((float)srcWidth - 1) / dstWidth;
+            float y_ratio = ((float)srcHeight - 1) / dstHeight;
+            int rX = Math.max(Mathf.round(x_ratio), 1), rY = Math.max(Mathf.round(y_ratio), 1);
+            float xdiff, ydiff;
+            int spitch = 4 * owidth;
+            int dx, dy, sx, sy, i = 0, j;
+            ByteBuffer spixels = pixmap.pixels;
 
-                for(; i < dstHeight; i++){
-                    sy = (int)(i * y_ratio) + srcy;
-                    dy = i + dsty;
-                    ydiff = (y_ratio * i + srcy) - sy;
-                    if(sy < 0 || dy < 0) continue;
-                    if(sy >= oheight || dy >= height) break;
+            for(; i < dstHeight; i++){
+                sy = (int)(i * y_ratio) + srcy;
+                dy = i + dsty;
+                ydiff = (y_ratio * i + srcy) - sy;
+                if(sy < 0 || dy < 0) continue;
+                if(sy >= oheight || dy >= height) break;
 
-                    for(j = 0; j < dstWidth; j++){
-                        sx = (int)(j * x_ratio) + srcx;
-                        dx = j + dstx;
-                        xdiff = (x_ratio * j + srcx) - sx;
-                        if(sx < 0 || dx < 0) continue;
-                        if(sx >= owidth || dx >= width) break;
+                for(j = 0; j < dstWidth; j++){
+                    sx = (int)(j * x_ratio) + srcx;
+                    dx = j + dstx;
+                    xdiff = (x_ratio * j + srcx) - sx;
+                    if(sx < 0 || dx < 0) continue;
+                    if(sx >= owidth || dx >= width) break;
 
-                        int
-                        srcp = (sx + sy * owidth) * 4,
-                        c1 = spixels.getInt(srcp),
-                        c2 = sx + rX < srcWidth ? spixels.getInt(srcp + 4 *rX) : c1,
-                        c3 = sy + rY < srcHeight ? spixels.getInt(srcp + spitch * rY) : c1,
-                        c4 = sx + rX < srcWidth && sy + rY < srcHeight ? spixels.getInt(srcp + 4 * rX + spitch * rY) : c1;
+                    int
+                    srcp = (sx + sy * owidth) * 4,
+                    c1 = spixels.getInt(srcp),
+                    c2 = sx + rX < srcWidth ? spixels.getInt(srcp + 4 *rX) : c1,
+                    c3 = sy + rY < srcHeight ? spixels.getInt(srcp + spitch * rY) : c1,
+                    c4 = sx + rX < srcWidth && sy + rY < srcHeight ? spixels.getInt(srcp + 4 * rX + spitch * rY) : c1;
 
-                        float ta = (1 - xdiff) * (1 - ydiff);
-                        float tb = (xdiff) * (1 - ydiff);
-                        float tc = (1 - xdiff) * (ydiff);
-                        float td = (xdiff) * (ydiff);
+                    float ta = (1 - xdiff) * (1 - ydiff);
+                    float tb = (xdiff) * (1 - ydiff);
+                    float tc = (1 - xdiff) * (ydiff);
+                    float td = (xdiff) * (ydiff);
 
-                        int r = (int)(((c1 & 0xff000000) >>> 24) * ta + ((c2 & 0xff000000) >>> 24) * tb + ((c3 & 0xff000000) >>> 24) * tc + ((c4 & 0xff000000) >>> 24) * td) & 0xff;
-                        int g = (int)(((c1 & 0xff0000) >>> 16) * ta + ((c2 & 0xff0000) >>> 16) * tb + ((c3 & 0xff0000) >>> 16) * tc + ((c4 & 0xff0000) >>> 16) * td) & 0xff;
-                        int b = (int)(((c1 & 0xff00) >>> 8) * ta + ((c2 & 0xff00) >>> 8) * tb + ((c3 & 0xff00) >>> 8) * tc + ((c4 & 0xff00) >>> 8) * td) & 0xff;
-                        int a = (int)((c1 & 0xff) * ta + (c2 & 0xff) * tb + (c3 & 0xff) * tc + (c4 & 0xff) * td) & 0xff;
-                        int srccol = (r << 24) | (g << 16) | (b << 8) | a;
+                    int r = (int)(((c1 & 0xff000000) >>> 24) * ta + ((c2 & 0xff000000) >>> 24) * tb + ((c3 & 0xff000000) >>> 24) * tc + ((c4 & 0xff000000) >>> 24) * td) & 0xff;
+                    int g = (int)(((c1 & 0xff0000) >>> 16) * ta + ((c2 & 0xff0000) >>> 16) * tb + ((c3 & 0xff0000) >>> 16) * tc + ((c4 & 0xff0000) >>> 16) * td) & 0xff;
+                    int b = (int)(((c1 & 0xff00) >>> 8) * ta + ((c2 & 0xff00) >>> 8) * tb + ((c3 & 0xff00) >>> 8) * tc + ((c4 & 0xff00) >>> 8) * td) & 0xff;
+                    int a = (int)((c1 & 0xff) * ta + (c2 & 0xff) * tb + (c3 & 0xff) * tc + (c4 & 0xff) * td) & 0xff;
+                    int srccol = (r << 24) | (g << 16) | (b << 8) | a;
 
-                        setRaw(dx, dy, !blending ? srccol : blend(srccol, getRaw(dx, dy)));
-                    }
+                    setRaw(dx, dy, !blending ? srccol : blend(srccol, getRaw(dx, dy)));
                 }
-            }else{
-                //blit with nearest neighbor filtering
-                int xratio = (srcWidth << 16) / dstWidth + 1;
-                int yratio = (srcHeight << 16) / dstHeight + 1;
-                int dx, dy, sx, sy;
+            }
+        }else{
+            //blit with nearest neighbor filtering
+            int xratio = (srcWidth << 16) / dstWidth + 1;
+            int yratio = (srcHeight << 16) / dstHeight + 1;
+            int dx, dy, sx, sy;
 
-                for(int i = 0; i < dstHeight; i++){
-                    sy = ((i * yratio) >> 16) + srcy;
-                    dy = i + dsty;
-                    if(sy < 0 || dy < 0) continue;
-                    if(sy >= oheight || dy >= height) break;
+            for(int i = 0; i < dstHeight; i++){
+                sy = ((i * yratio) >> 16) + srcy;
+                dy = i + dsty;
+                if(sy < 0 || dy < 0) continue;
+                if(sy >= oheight || dy >= height) break;
 
-                    for(int j = 0; j < dstWidth; j++){
-                        sx = ((j * xratio) >> 16) + srcx;
-                        dx = j + dstx;
-                        if(sx < 0 || dx < 0) continue;
-                        if(sx >= owidth || dx >= width) break;
+                for(int j = 0; j < dstWidth; j++){
+                    sx = ((j * xratio) >> 16) + srcx;
+                    dx = j + dstx;
+                    if(sx < 0 || dx < 0) continue;
+                    if(sx >= owidth || dx >= width) break;
 
-                        setRaw(dx, dy, !blending ? pixmap.getRaw(sx, sy) : blend(pixmap.getRaw(sx, sy), getRaw(dx, dy)));
-                    }
+                    setRaw(dx, dy, !blending ? pixmap.getRaw(sx, sy) : blend(pixmap.getRaw(sx, sy), getRaw(dx, dy)));
                 }
             }
         }
@@ -590,14 +575,7 @@ public class Pixmap implements Disposable{
     /** Releases all resources associated with this Pixmap. */
     @Override
     public void dispose(){
-        if(handle <= 0) return;
-        free(handle);
-        handle = 0;
-    }
 
-    @Override
-    public boolean isDisposed(){
-        return handle == 0;
     }
 
     public void set(int x, int y, Color color){
@@ -622,36 +600,8 @@ public class Pixmap implements Disposable{
         pixels.putInt((x + y * width) * 4, color);
     }
 
-    /**
-     * Returns the OpenGL ES format of this Pixmap. Used as the seventh parameter to
-     * {@link GL20#glTexImage2D(int, int, int, int, int, int, int, int, java.nio.Buffer)}.
-     * @return GL_RGBA
-     */
-    public int getGLFormat(){
-        return Format.rgba8888.glType;
-    }
-
-    /**
-     * Returns the OpenGL ES format of this Pixmap. Used as the third parameter to
-     * {@link GL20#glTexImage2D(int, int, int, int, int, int, int, int, java.nio.Buffer)}.
-     * @return GL_RGBA
-     */
-    public int getGLInternalFormat(){
-        return Format.rgba8888.glType;
-    }
-
-    /**
-     * Returns the OpenGL ES type of this Pixmap. Used as the eighth parameter to
-     * {@link GL20#glTexImage2D(int, int, int, int, int, int, int, int, java.nio.Buffer)}.
-     * @return GL_UNSIGNED_BYTE
-     */
-    public int getGLType(){
-        return Format.rgba8888.glFormat;
-    }
-
     /** @return the direct {@link ByteBuffer} holding the pixel data. */
     public ByteBuffer getPixels(){
-        if(handle == 0) throw new ArcRuntimeException("Pixmap already disposed");
         return pixels;
     }
 
@@ -723,43 +673,12 @@ public class Pixmap implements Disposable{
     }
 
     private void load(byte[] encodedData, int offset, int len, String file){
-        //use native implementation when possible
-        if(ArcNativesLoader.loaded){
-            try{
-                //read with stb_image, which is slightly faster for large images and supports more formats
-                long[] nativeData = new long[3];
-                pixels = loadJni(nativeData, encodedData, offset, len);
-                if(pixels == null) throw new ArcRuntimeException("Error loading pixmap from image data: " + getFailureReason() + (file == null ? "" : " (" + file + ")"));
-
-                handle = nativeData[0];
-                width = (int)nativeData[1];
-                height = (int)nativeData[2];
-                pixels.position(0).limit(pixels.capacity());
-            }catch(ArcRuntimeException e){
-                //stb_image bug? some PNGs fail with "corrupt JPEG" as the error, try the Java implementation if so
-                if(e.getMessage() != null && e.getMessage().contains("Corrupt JPEG")){
-                    try{
-                        loadJava(encodedData, offset, len, file);
-                        return;
-                    }catch(Exception ignored){
-                        //I did my best, fall through and throw the original exception
-                    }
-                }
-                throw e;
-            }
-        }else{
-            loadJava(encodedData, offset, len, file);
-        }
-    }
-
-    private void loadJava(byte[] encodedData, int offset, int len, String file){
         //read with the pure java implementation
         try{
             PngReader reader = new PngReader();
             pixels = reader.read(new ByteArrayInputStream(encodedData, offset, len));
             width = reader.width;
             height = reader.height;
-            handle = -1;
             pixels.position(0).limit(pixels.capacity());
         }catch(Exception e){
             throw new ArcRuntimeException("Failed to load PNG data" + (file == null ? "" : " (" + file + ")"), e);
@@ -767,23 +686,9 @@ public class Pixmap implements Disposable{
     }
 
     private void load(int width, int height){
-        //use native implementation when possible
-        if(ArcNativesLoader.loaded){
-            long[] nativeData = new long[3];
-            pixels = createJni(nativeData, width, height);
-            if(pixels == null) throw new ArcRuntimeException("Error creating pixmap (out of memory?)");
-            pixels.limit(pixels.capacity());
-
-            this.handle = nativeData[0];
-            this.width = (int)nativeData[1];
-            this.height = (int)nativeData[2];
-        }else{
-            //use DirectByteBuffer instead
-            this.handle = -1; //handle -1 means non-native buffer
-            this.width = width;
-            this.height = height;
-            this.pixels = ByteBuffer.allocateDirect(width * height * 4);
-        }
+        this.width = width;
+        this.height = height;
+        this.pixels = ByteBuffer.allocateDirect(width * height * 4);
     }
 
     @Override
@@ -791,129 +696,29 @@ public class Pixmap implements Disposable{
         return "Pixmap:" + width + "x" + height;
     }
 
-    /** Because pixel format means something for this class, used fields from Gl class must be moved here. */
-    class Gl {
-        /** https://github.com/Anuken/Arc/blob/master/arc-core/src/arc/graphics/Gl.java#L139-L155 */
-        public static final int
-        byteV = 0x1400,
-        unsignedByte = 0x1401,
-        shortV = 0x1402,
-        unsignedShort = 0x1403,
-        intV = 0x1404,
-        unsignedInt = 0x1405,
-        floatV = 0x1406,
-        fixed = 0x140C,
-        depthComponent = 0x1902,
-        alpha = 0x1906,
-        rgb = 0x1907,
-        rgba = 0x1908,
-        luminance = 0x1909,
-        luminanceAlpha = 0x190A,
-        unsignedShort4444 = 0x8033,
-        unsignedShort5551 = 0x8034,
-        unsignedShort565 = 0x8363;
-    }
-    
-    /**
-     * Different pixel formats.
-     * @author mzechner
-     */
-    public enum Format{
-        alpha(Gl.unsignedByte, Gl.alpha),
-        intensity(Gl.unsignedByte, Gl.alpha),
-        luminanceAlpha(Gl.unsignedByte, Gl.luminanceAlpha),
-        rgb565(Gl.unsignedShort565, Gl.rgb),
-        rgba4444(Gl.unsignedShort4444, Gl.rgba),
-        rgb888(Gl.unsignedByte, Gl.rgb),
-        rgba8888(Gl.unsignedByte, Gl.rgba);
-
-        public static final Format[] all = values();
-        public final int glFormat, glType;
-
-        Format(int glType, int glFormat){
-            this.glFormat = glFormat;
-            this.glType = glType;
-        }
-    }
-
     static void copyMem(ByteBuffer src, int srcOffset, ByteBuffer dst, int dstOffset, int len){
-        //Java 16 supports direct byte buffer transfer without modifying state. Older versions (+Android/iOS) don't, and likely never will
-        if(supportsBufferCopy){
-            Java16Buffers.copy(src, srcOffset, dst, dstOffset, len);
+        if(len <= 0){
+            return;
+        }else if(src.hasArray()){
+            int dp = dst.position();
+            try{
+                dst.position(dstOffset);
+                dst.put(src.array(), src.arrayOffset() + srcOffset, len);
+            }finally{
+                dst.position(dp);
+            }
         }else{
-            if(!OS.isIos && !UnsafeBuffers.failed){
-                UnsafeBuffers.copy(src, srcOffset, dst, dstOffset, len);
-            }else{
-                Buffers.copyJni(src, srcOffset, dst, dstOffset, len);
+            int sp = src.position(), sl = src.limit(), dp = dst.position();
+            try{
+                src.limit(srcOffset + len);
+                src.position(srcOffset);
+                dst.position(dstOffset);
+                dst.put(src);
+            }finally{
+                src.limit(sl);
+                src.position(sp);
+                dst.position(dp);
             }
         }
     }
-
-    /*JNI
-
-    #include <stdlib.h>
-    #include <stdint.h>
-
-    #include <stdlib.h>
-    #define STB_IMAGE_IMPLEMENTATION
-    #define STBI_FAILURE_USERMSG
-    #define STBI_NO_STDIO
-    #ifdef __APPLE__
-    #define STBI_NO_THREAD_LOCALS
-    #endif
-    #include "stb_image.h"
-
-    */
-
-    /** Loads a pixmap from bytes and returns [address, width, height] in nativeData. */
-    static native ByteBuffer loadJni(long[] nativeData, byte[] buffer, int offset, int len); /*MANUAL
-        const unsigned char* p_buffer = (const unsigned char*)env->GetPrimitiveArrayCritical(buffer, 0);
-
-        int32_t width, height, format;
-
-        //always use STBI_rgb_alpha (4) as the format, since that's the only thing pixmaps support
-        //RGB images are generally uncommon and the memory savings don't really matter; formats have to be converted to RGBA for drawing anyway
-        const unsigned char* pixels = stbi_load_from_memory(p_buffer + offset, len, &width, &height, &format, STBI_rgb_alpha);
-
-        env->ReleasePrimitiveArrayCritical(buffer, (char*)p_buffer, 0);
-
-        if(pixels == NULL) return NULL;
-
-        jobject pixel_buffer = env->NewDirectByteBuffer((void*)pixels, width * height * 4);
-        jlong* p_native_data = (jlong*)env->GetPrimitiveArrayCritical(nativeData, 0);
-        p_native_data[0] = (jlong)pixels;
-        p_native_data[1] = width;
-        p_native_data[2] = height;
-        env->ReleasePrimitiveArrayCritical(nativeData, p_native_data, 0);
-
-        return pixel_buffer;
-     */
-
-    /** Creates a new pixmap and returns [address, width, height] in nativeData. */
-    static native ByteBuffer createJni(long[] nativeData, int width, int height); /*MANUAL
-        const unsigned char* pixels = (unsigned char*)malloc(width * height * 4);
-
-        if(!pixels) return 0;
-
-        //fill pixel array with 0s
-        //TODO use calloc insted?
-        memset((void*)pixels, 0, width * height * 4);
-
-        jobject pixel_buffer = env->NewDirectByteBuffer((void*)pixels, width * height * 4);
-        jlong* p_native_data = (jlong*)env->GetPrimitiveArrayCritical(nativeData, 0);
-        p_native_data[0] = (jlong)pixels;
-        p_native_data[1] = width;
-        p_native_data[2] = height;
-        env->ReleasePrimitiveArrayCritical(nativeData, p_native_data, 0);
-
-        return pixel_buffer;
-     */
-
-    static native void free(long buffer); /*
-        free((void*)buffer);
-     */
-
-    static native String getFailureReason(); /*
-        return env->NewStringUTF(stbi_failure_reason());
-     */
 }

@@ -1,6 +1,7 @@
 package arc.struct;
 
 import arc.struct.ObjectMap.*;
+import arc.func.*;
 import arc.math.*;
 import arc.util.*;
 
@@ -73,6 +74,13 @@ public class ArrayMap<K, V> implements Iterable<ObjectMap.Entry<K, V>>{
         size = array.size;
         System.arraycopy(array.keys, 0, keys, 0, size);
         System.arraycopy(array.values, 0, values, 0, size);
+    }
+    
+    /**Iterates through key/value pairs.*/
+    public void each(Cons2<K, V> cons){
+        for(int i = 0; i < size; i++){
+            cons.get(keys[i], values[i]);
+        }
     }
 
     public int put(K key, V value){

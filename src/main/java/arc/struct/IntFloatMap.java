@@ -1,5 +1,6 @@
 package arc.struct;
 
+import arc.func.IntFloatc;
 import arc.math.Mathf;
 import arc.util.ArcRuntimeException;
 
@@ -87,6 +88,12 @@ public class IntFloatMap implements Iterable<IntFloatMap.Entry>{
         size = map.size;
         zeroValue = map.zeroValue;
         hasZeroValue = map.hasZeroValue;
+    }
+
+    public void each(IntFloatc cons){
+        for(Entry entry : entries()){
+            cons.get(entry.key, entry.value);
+        }
     }
 
     public void put(int key, float value){
@@ -560,6 +567,7 @@ public class IntFloatMap implements Iterable<IntFloatMap.Entry>{
         return (h ^ h >>> hashShift) & mask;
     }
 
+    @Override
     public int hashCode(){
         int h = 0;
         if(hasZeroValue){
@@ -579,6 +587,7 @@ public class IntFloatMap implements Iterable<IntFloatMap.Entry>{
         return h;
     }
 
+    @Override
     public boolean equals(Object obj){
         if(obj == this) return true;
         if(!(obj instanceof IntFloatMap)) return false;
@@ -602,6 +611,7 @@ public class IntFloatMap implements Iterable<IntFloatMap.Entry>{
         return true;
     }
 
+    @Override
     public String toString(){
         if(size == 0) return "{}";
         StringBuilder buffer = new StringBuilder(32);
@@ -705,6 +715,7 @@ public class IntFloatMap implements Iterable<IntFloatMap.Entry>{
         public int key;
         public float value;
 
+        @Override
         public String toString(){
             return key + "=" + value;
         }
@@ -758,6 +769,11 @@ public class IntFloatMap implements Iterable<IntFloatMap.Entry>{
             currentIndex = INDEX_ILLEGAL;
             map.size--;
         }
+
+        public boolean hasNext(){
+            if(!valid) throw new ArcRuntimeException("#iterator() cannot be used nested.");
+            return hasNext;
+        }
     }
 
     public static class Entries extends MapIterator implements Iterable<Entry>, Iterator<Entry>{
@@ -784,31 +800,21 @@ public class IntFloatMap implements Iterable<IntFloatMap.Entry>{
             return entry;
         }
 
-        public boolean hasNext(){
-            if(!valid) throw new ArcRuntimeException("#iterator() cannot be used nested.");
-            return hasNext;
-        }
-
         public Iterator<Entry> iterator(){
             return this;
         }
-
-        public void remove(){
-            super.remove();
-        }
     }
 
-    public static class Values extends MapIterator{
+    public static class Values extends MapIterator implements Iterable<Float>, Iterator<Float>{
         public Values(IntFloatMap map){
             super(map);
         }
 
-        public boolean hasNext(){
-            if(!valid) throw new ArcRuntimeException("#iterator() cannot be used nested.");
-            return hasNext;
+        public Float next(){
+            return nextValue();
         }
 
-        public float next(){
+        public float nextValue(){
             if(!hasNext) throw new NoSuchElementException();
             if(!valid) throw new ArcRuntimeException("#iterator() cannot be used nested.");
             float value;
@@ -825,22 +831,26 @@ public class IntFloatMap implements Iterable<IntFloatMap.Entry>{
         public FloatSeq toArray(){
             FloatSeq array = new FloatSeq(true, map.size);
             while(hasNext)
-                array.add(next());
+                array.add(nextValue());
             return array;
+        }
+
+        @Override
+        public Iterator<Float> iterator(){
+            return this;
         }
     }
 
-    public static class Keys extends MapIterator{
+    public static class Keys extends MapIterator implements Iterable<Integer>, Iterator<Integer>{
         public Keys(IntFloatMap map){
             super(map);
         }
 
-        public boolean hasNext(){
-            if(!valid) throw new ArcRuntimeException("#iterator() cannot be used nested.");
-            return hasNext;
+        public Integer next(){
+            return nextKey();
         }
 
-        public int next(){
+        public int nextKey(){
             if(!hasNext) throw new NoSuchElementException();
             if(!valid) throw new ArcRuntimeException("#iterator() cannot be used nested.");
             int key = nextIndex == INDEX_ZERO ? 0 : map.keyTable[nextIndex];
@@ -853,8 +863,13 @@ public class IntFloatMap implements Iterable<IntFloatMap.Entry>{
         public IntSeq toArray(){
             IntSeq array = new IntSeq(true, map.size);
             while(hasNext)
-                array.add(next());
+                array.add(nextKey());
             return array;
+        }
+
+        @Override
+        public Iterator<Integer> iterator(){
+            return this;
         }
     }
 }

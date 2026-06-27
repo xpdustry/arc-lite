@@ -592,6 +592,7 @@ public class ObjectMap<K, V> implements Iterable<ObjectMap.Entry<K, V>>{
         return (h ^ h >>> hashShift) & mask;
     }
 
+    @Override
     public int hashCode(){
         int h = 0;
         K[] keyTable = this.keyTable;
@@ -610,6 +611,7 @@ public class ObjectMap<K, V> implements Iterable<ObjectMap.Entry<K, V>>{
         return h;
     }
 
+    @Override
     public boolean equals(Object obj){
         if(obj == this) return true;
         if(!(obj instanceof ObjectMap)) return false;
@@ -623,9 +625,7 @@ public class ObjectMap<K, V> implements Iterable<ObjectMap.Entry<K, V>>{
                 V value = valueTable[i];
                 if(value == null){
                     if(!other.containsKey(key) || other.get(key) != null) return false;
-                }else{
-                    if(!value.equals(other.get(key))) return false;
-                }
+                }else if(!value.equals(other.get(key))) return false;
             }
         }
         return true;
@@ -635,6 +635,7 @@ public class ObjectMap<K, V> implements Iterable<ObjectMap.Entry<K, V>>{
         return toString(separator, false);
     }
 
+    @Override
     public String toString(){
         return toString(", ", true);
     }
@@ -737,6 +738,7 @@ public class ObjectMap<K, V> implements Iterable<ObjectMap.Entry<K, V>>{
         public K key;
         public V value;
 
+        @Override
         public String toString(){
             return key + "=" + value;
         }
@@ -783,6 +785,11 @@ public class ObjectMap<K, V> implements Iterable<ObjectMap.Entry<K, V>>{
             currentIndex = -1;
             map.size--;
         }
+
+        public boolean hasNext(){
+            if(!valid) throw new ArcRuntimeException("#iterator() cannot be used nested.");
+            return hasNext;
+        }
     }
 
     public static class Entries<K, V> extends MapIterator<K, V, Entry<K, V>>{
@@ -793,6 +800,7 @@ public class ObjectMap<K, V> implements Iterable<ObjectMap.Entry<K, V>>{
         }
 
         /** Note the same entry instance is returned each time this method is called. */
+        @Override
         public Entry<K, V> next(){
             if(!hasNext) throw new NoSuchElementException();
             if(!valid) throw new ArcRuntimeException("#iterator() cannot be used nested.");
@@ -804,11 +812,7 @@ public class ObjectMap<K, V> implements Iterable<ObjectMap.Entry<K, V>>{
             return entry;
         }
 
-        public boolean hasNext(){
-            if(!valid) throw new ArcRuntimeException("#iterator() cannot be used nested.");
-            return hasNext;
-        }
-
+        @Override
         public Entries<K, V> iterator(){
             return this;
         }
@@ -819,11 +823,7 @@ public class ObjectMap<K, V> implements Iterable<ObjectMap.Entry<K, V>>{
             super((ObjectMap<Object, V>)map);
         }
 
-        public boolean hasNext(){
-            if(!valid) throw new ArcRuntimeException("#iterator() cannot be used nested.");
-            return hasNext;
-        }
-
+        @Override
         public V next(){
             if(!hasNext) throw new NoSuchElementException();
             if(!valid) throw new ArcRuntimeException("#iterator() cannot be used nested.");
@@ -831,10 +831,6 @@ public class ObjectMap<K, V> implements Iterable<ObjectMap.Entry<K, V>>{
             currentIndex = nextIndex;
             findNextIndex();
             return value;
-        }
-
-        public Values<V> iterator(){
-            return this;
         }
 
         /** Returns a new array containing the remaining values. */
@@ -848,6 +844,11 @@ public class ObjectMap<K, V> implements Iterable<ObjectMap.Entry<K, V>>{
                 array.add(next());
             return array;
         }
+
+        @Override
+        public Values<V> iterator(){
+            return this;
+        }
     }
 
     public static class Keys<K> extends MapIterator<K, Object, K>{
@@ -855,11 +856,7 @@ public class ObjectMap<K, V> implements Iterable<ObjectMap.Entry<K, V>>{
             super((ObjectMap<K, Object>)map);
         }
 
-        public boolean hasNext(){
-            if(!valid) throw new ArcRuntimeException("#iterator() cannot be used nested.");
-            return hasNext;
-        }
-
+        @Override
         public K next(){
             if(!hasNext) throw new NoSuchElementException();
             if(!valid) throw new ArcRuntimeException("#iterator() cannot be used nested.");
@@ -867,10 +864,6 @@ public class ObjectMap<K, V> implements Iterable<ObjectMap.Entry<K, V>>{
             currentIndex = nextIndex;
             findNextIndex();
             return key;
-        }
-
-        public Keys<K> iterator(){
-            return this;
         }
 
         /** Returns a new array containing the remaining keys. */
@@ -883,6 +876,11 @@ public class ObjectMap<K, V> implements Iterable<ObjectMap.Entry<K, V>>{
             while(hasNext)
                 array.add(next());
             return array;
+        }
+
+        @Override
+        public Keys<K> iterator(){
+            return this;
         }
     }
 }

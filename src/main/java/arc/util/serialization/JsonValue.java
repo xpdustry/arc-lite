@@ -1063,8 +1063,7 @@ public class JsonValue implements Iterable<JsonValue>{
     }
 
     public void toJson(Writer writer, OutputType outputType) throws IOException{
-        if (isValue()) writer.write(asString());
-        else json(this, writer, outputType);
+        json(this, writer, outputType);
     }
     
     private static void json(JsonValue object, Writer writer, OutputType outputType) throws IOException{
@@ -1117,10 +1116,6 @@ public class JsonValue implements Iterable<JsonValue>{
         }
     }
 
-    /**
-     * More efficient than {@link #prettyPrint(PrettyPrintSettings)} but {@link PrettyPrintSettings#singleLineColumns} and
-     * {@link PrettyPrintSettings#wrapNumericArrays} are not supported.
-     */
     public void prettyPrint(OutputType outputType, Writer writer) throws IOException{
         prettyPrint(this, writer, 0, outputType);
     }

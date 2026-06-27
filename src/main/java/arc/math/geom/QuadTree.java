@@ -41,10 +41,12 @@ public class QuadTree<T extends QuadTreeObject>{
         }
         leaf = false;
 
+        //TODO: crappy
         Object[] items = objects.items;
 
         // Transfer objects to children if they fit entirely in one
         for(int i = 0; i < objects.size; i++){
+            @SuppressWarnings("unchecked")
             T obj = (T)items[i];
             hitbox(obj);
             QuadTree<T> child = getFittingChild(tmp);

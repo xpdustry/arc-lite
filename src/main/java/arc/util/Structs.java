@@ -29,7 +29,21 @@ public class Structs{
             if(removal.get(it.next())) it.remove();
         }
     }
-    
+
+    public static <T> T[] filter(T[] array, Boolf<T> removal){
+        T[] temp = Reflect.newArray(array, array.length);
+        int i = 0;
+        for(T t : array){
+            if(removal.get(t)) temp[i++] = t;
+        }
+        if(i == array.length) return temp;
+        T[] next = Reflect.newArray(array, i);
+        System.arraycopy(temp, 0, next, 0, i);
+        return next;
+    }
+
+    /** @deprecated This does the invert of others. */
+    @Deprecated
     public static <T> T[] filter(Class<T> type, T[] array, Boolf<T> value){
         Seq<T> out = new Seq<>(true, array.length, type);
         for(T t : array){
@@ -117,7 +131,7 @@ public class Structs{
     public static <T> boolean contains(T[] array, Boolf<T> value){
         return find(array, value) != null;
     }
-    
+
     public static <T> boolean contains(Iterable<T> array, Boolf<T> value){
         return find(array, value) != null;
     }
@@ -128,7 +142,7 @@ public class Structs{
         }
         return null;
     }
-    
+
     public static <T> T find(Iterable<T> array, Boolf<T> value){
         for(T t : array){
             if(value.get(t)) return t;
@@ -154,7 +168,7 @@ public class Structs{
         int i = 0;
         for(T t : array){
             if(value.get(t)) return i;
-            i ++;
+            i++;
         }
         return -1;
     }
@@ -183,6 +197,15 @@ public class Structs{
         System.arraycopy(array, 0, next, 0, array.length);
         return next;
     }
+
+    public static <T> T[] insert(T[] array, int index, T item){
+        T[] next = Reflect.newArray(array, array.length + 1);
+        if(index > 0) System.arraycopy(array, 0, next, 0, index);
+        int tail = array.length - index;
+        if(tail > 0) System.arraycopy(array, index, next, index + 1, tail);
+        next[index] = item;
+        return next;
+   }
 
     public static <T> void swap(T[] array, int a, int b){
         T temp = array[a];
@@ -228,7 +251,7 @@ public class Structs{
             cons.get(t);
         }
     }
-    
+
     /** Alias of {@link #forEach}. */
     public static <T> void each(Iterable<T> i, Cons<T> cons){
         forEach(i, cons);

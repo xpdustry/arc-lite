@@ -2,7 +2,7 @@ package arc.struct;
 
 /** Tiny array wrapper with a mask int for fast contains() checks. */
 public class EnumSet<T extends Enum<T>>{
-    private int mask;
+    protected int mask;
 
     /** Array, for iterating over. Do not change. */
     public T[] array;

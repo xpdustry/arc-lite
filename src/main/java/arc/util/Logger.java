@@ -6,31 +6,32 @@ import arc.util.Log.*;
 /** Logger with topics. */
 public class Logger{
     protected static final Object[] empty = {};
-    
+
     public static LoggerHandler defaultLogger = new DefaultLoggerHandler();
     public static TopicFormatter defaultTopicFormatter = new DefaultTopicFormatter();
-    
+
     /** Custom logging level. {@code null} to use {@link Log#level}. */
     public LogLevel level;
-    /** Commonly the first topic is a main and second is a thing related. {@code null} if no topics. */
-    public String[] topics;
+    protected String[] topics;
+    protected String formattedTopics;
     public LoggerHandler logger = defaultLogger;
+    /** Only used once to format topics, the result is then cached. */
     public TopicFormatter topicFormatter = defaultTopicFormatter;
     /** {@code null} to use {@link Log#formatter}. */
     public LogFormatter formatter;
 
-    public Logger(){ 
-        topics = null; 
+    public Logger(){
+        topics = null;
     }
-    
+
     /** Uses the capitalized class name (without package) as a topic. */
-    public Logger(Class<?> clazz){ 
-        this(Strings.insertSpaces(clazz.getSimpleName())); 
+    public Logger(Class<?> clazz){
+        this(Strings.insertSpaces(clazz.getSimpleName()));
     }
-    
-    /** 
-     * Uses the capitalized class name (without package) for the first class, 
-     * and the fully qualified class name for others. 
+
+    /**
+     * Uses the capitalized class name (without package) for the first class,
+     * and the fully qualified class name for others.
      */
     public Logger(Class<?>... classes){
         if(classes == null || classes.length == 0){
@@ -44,16 +45,37 @@ public class Logger{
     }
 
     public Logger(String topic){
-        topic = topic.trim();
-        topics = topic.isEmpty() ? null : new String[] {topic};
+        addTopic(topic);
     }
 
     public Logger(String... topics){
-        this.topics = topics == null || topics.length == 0 ? null : topics;
+        setTopics(topics);
+    }
+
+    /**
+     * Commonly the first topic is a main and second is a thing related. {@code null} if no topics.
+     * @return a copy of topics.
+     */
+    public String[] getTopics() {
+        return topics == null ? null : topics.clone();
+    }
+
+    /** Ignores if topic is empty and trim spaces. */
+    public void addTopic(String topic) {
+        if (topic == null || (topic = topic.trim()).isEmpty()) return;
+        topics = topics == null ? new String[] {topic} : Structs.add(topics, topic);
+        formattedTopics = null;
+    }
+
+    /** Ignores empty topics. */
+    public void setTopics(String[] topics) {
+        if (topics == null || topics.length == 0) return;
+        this.topics = Structs.filter(topics, t -> t == null || t.isEmpty());
+        formattedTopics = null;
     }
 
     public void log(LogLevel level, String text, Throwable th, Object... args){
-        if((level != null ? level.ordinal() : Log.level.ordinal()) > level.ordinal()) return;
+        if((level != null ? level.ordinal() : Log.level.ordinal()) > this.level.ordinal()) return;
         logger.log(this, level, text, th, args);
     }
     public void log(LogLevel level, String text, Object... args){ log(level, text, null, args); }
@@ -66,7 +88,7 @@ public class Logger{
     public void info(String text, Object... args){ log(LogLevel.info, text, args); }
     public void info(String text){ info(text, empty); }
     public void info(Object object){ info(String.valueOf(object), empty); }
-    
+
     public void warn(String text, Object... args){ log(LogLevel.warn, text, args); }
     public void warn(String text){ warn(text, empty); }
     public void warn(Object object){ warn(String.valueOf(object), empty); }
@@ -78,73 +100,73 @@ public class Logger{
     public void err(Object object){ err(String.valueOf(object), null, empty); }
     public void err(Throwable th){ err(null, th, empty); }
 
-    /** Log an empty "info" line. */
+    /** Log an empty info line. */
     public void ln(){ log(LogLevel.info, null, empty); }
 
-    
-    public static interface LoggerHandler{
+
+    public interface LoggerHandler{
         /** Text and topics colors must be parsed by this method. */
         void log(Logger context, LogLevel level, String text, Throwable th, Object... args);
     }
 
-    public static interface TopicFormatter{
+    public interface TopicFormatter{
         String format(Logger context, LogLevel level, String[] topics);
     }
 
-    
+
     public static class DefaultLoggerHandler implements LoggerHandler{
         public LogHandler delegate;
 
-        public DefaultLoggerHandler(){ 
-            this(Log.logger); 
+        public DefaultLoggerHandler(){
+            this(Log.logger);
         }
 
-        public DefaultLoggerHandler(LogHandler delegate){ 
-            this.delegate = delegate; 
+        public DefaultLoggerHandler(LogHandler delegate){
+            this.delegate = delegate;
         }
 
         public String format(Logger context, String text, Object... args){
             return context == null || context.formatter == null ? Log.format(text, args) :
                    context.formatter.format(text, Log.useColors, args);
         }
-        
+
         @Override
         public void log(Logger context, LogLevel level, String text, Throwable th, Object... args){
             if(text != null){
                 text = format(context, text, args);
                 if(th != null) text += ": " + Strings.getStackTrace(th);
             }else if(th != null) text = Strings.getStackTrace(th);
-            
-            synchronized(delegate){
-                String tag = context == null || context.topics == null || context.topicFormatter == null ? "" : 
-                    format(context, context.topicFormatter.format(context, level, context.topics), empty);
-                
-                if(text == null || text.isEmpty()){ 
-                    delegate.log(level, tag); 
-                    return; 
+
+            //synchronized(delegate){
+                String tag = context == null || context.topics == null || context.topicFormatter == null ? "" :
+                    context.formattedTopics != null ? context.formattedTopics :
+                    (context.formattedTopics = format(context, context.topicFormatter.format(context, level, context.topics), empty));
+
+                if(text == null || text.isEmpty()){
+                    delegate.log(level, tag);
+                    return;
                 }
-                
+
                 int i = 0, nl;
                 while((nl = text.indexOf('\n', i)) != -1){
                     delegate.log(level, tag + text.substring(i, nl));
                     i = nl + 1;
                 }
                 delegate.log(level, tag + (i == 0 ? text : text.substring(i)));
-            }
+            //}
         }
     }
-    
+
     public static class DefaultTopicFormatter implements TopicFormatter{
         public static final String[] tags = {"&lc&fb", "&lb&fb", "&ly&fb", "&lr&fb", ""};
-        //TODO: cache builded topic?
-        
+
         @Override
-        public String format(Logger context, LogLevel level, String[] topics){ 
+        public String format(Logger context, LogLevel level, String[] topics){
             StringBuilder builder = new StringBuilder();
             for (String topic : topics){
-               builder.append(tags[level.ordinal()]).append('[').append(topic).append("]&fr "); 
+               builder.append(tags[level.ordinal()]).append('[').append(topic).append("]&fr ");
             }
-            return builder.toString(); 
+            return builder.toString();
         }
     }
 }

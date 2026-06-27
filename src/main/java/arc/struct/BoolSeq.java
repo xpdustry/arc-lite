@@ -1,5 +1,6 @@
 package arc.struct;
 
+import arc.func.Boolc;
 import arc.math.Mathf;
 
 import java.util.BitSet;
@@ -71,6 +72,12 @@ public class BoolSeq{
     /** @see #BoolSeq(boolean[]) */
     public static BoolSeq with(boolean... array){
         return new BoolSeq(array);
+    }
+
+    public void each(Boolc consumer){
+        for(int i = 0; i < size; i++){
+            consumer.get(items[i]);
+        }
     }
 
     public void add(boolean value){
@@ -316,6 +323,7 @@ public class BoolSeq{
         return array;
     }
 
+    @Override
     public int hashCode(){
         if(!ordered) return super.hashCode();
         boolean[] items = this.items;
@@ -325,6 +333,7 @@ public class BoolSeq{
         return h;
     }
 
+    @Override
     public boolean equals(Object object){
         if(object == this) return true;
         if(!ordered) return false;
@@ -340,6 +349,7 @@ public class BoolSeq{
         return true;
     }
 
+    @Override
     public String toString(){
         if(size == 0) return "[]";
         boolean[] items = this.items;

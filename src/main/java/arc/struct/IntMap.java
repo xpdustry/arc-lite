@@ -100,6 +100,12 @@ public class IntMap<V> implements Iterable<IntMap.Entry<V>>{
         hasZeroValue = map.hasZeroValue;
     }
 
+    public void each(Cons2<Integer, V> cons){
+        for(Entry<V> entry : entries()){
+            cons.get(entry.key, entry.value);
+        }
+    }
+
     public V put(int key, V value){
         if(key == 0){
             V oldValue = zeroValue;
@@ -576,6 +582,7 @@ public class IntMap<V> implements Iterable<IntMap.Entry<V>>{
         return (h ^ h >>> hashShift) & mask;
     }
 
+    @Override
     public int hashCode(){
         int h = 0;
         if(hasZeroValue && zeroValue != null){
@@ -597,6 +604,7 @@ public class IntMap<V> implements Iterable<IntMap.Entry<V>>{
         return h;
     }
 
+    @Override
     public boolean equals(Object obj){
         if(obj == this) return true;
         if(!(obj instanceof IntMap)) return false;
@@ -606,9 +614,7 @@ public class IntMap<V> implements Iterable<IntMap.Entry<V>>{
         if(hasZeroValue){
             if(other.zeroValue == null){
                 if(zeroValue != null) return false;
-            }else{
-                if(!other.zeroValue.equals(zeroValue)) return false;
-            }
+            }else if(!other.zeroValue.equals(zeroValue)) return false;
         }
         int[] keyTable = this.keyTable;
         V[] valueTable = this.valueTable;
@@ -618,14 +624,13 @@ public class IntMap<V> implements Iterable<IntMap.Entry<V>>{
                 V value = valueTable[i];
                 if(value == null){
                     if(!other.containsKey(key) || other.get(key) != null) return false;
-                }else{
-                    if(!value.equals(other.get(key))) return false;
-                }
+                }else if(!value.equals(other.get(key))) return false;
             }
         }
         return true;
     }
 
+    @Override
     public String toString(){
         if(size == 0) return "[]";
         StringBuilder buffer = new StringBuilder(32);
@@ -704,6 +709,38 @@ public class IntMap<V> implements Iterable<IntMap.Entry<V>>{
         return values2;
     }
 
+    public void eachValue(Cons<V> cons){
+        boolean hasNext = false;
+        final int INDEX_ZERO = -1;
+
+        int nextIndex = INDEX_ZERO;
+
+        int[] keyTable = this.keyTable;
+
+        if(hasZeroValue){
+            hasNext = true;
+        }else{
+            for(int n = capacity + stashSize; ++nextIndex < n; ){
+                if(keyTable[nextIndex] != EMPTY){
+                    hasNext = true;
+                    break;
+                }
+            }
+        }
+
+        while(hasNext){
+            cons.get(nextIndex == INDEX_ZERO ? zeroValue : valueTable[nextIndex]);
+
+            hasNext = false;
+            for(int n = capacity + stashSize; ++nextIndex < n;){
+                if(keyTable[nextIndex] != EMPTY){
+                    hasNext = true;
+                    break;
+                }
+            }
+        }
+    }
+
     /**
      * Returns an iterator for the keys in the map. Remove is supported. Note that the same iterator instance is returned each
      * time this method is called. Use the {@link Entries} constructor for nested or multithreaded iteration.
@@ -729,6 +766,7 @@ public class IntMap<V> implements Iterable<IntMap.Entry<V>>{
         public int key;
         public V value;
 
+        @Override
         public String toString(){
             return key + "=" + value;
         }
@@ -784,6 +822,11 @@ public class IntMap<V> implements Iterable<IntMap.Entry<V>>{
             currentIndex = INDEX_ILLEGAL;
             map.size--;
         }
+
+        public boolean hasNext(){
+            if(!valid) throw new ArcRuntimeException("#iterator() cannot be used nested.");
+            return hasNext;
+        }
     }
 
     public static class Entries<V> extends MapIterator<V> implements Iterable<Entry<V>>, Iterator<Entry<V>>{
@@ -810,28 +853,14 @@ public class IntMap<V> implements Iterable<IntMap.Entry<V>>{
             return entry;
         }
 
-        public boolean hasNext(){
-            if(!valid) throw new ArcRuntimeException("#iterator() cannot be used nested.");
-            return hasNext;
-        }
-
         public Iterator<Entry<V>> iterator(){
             return this;
-        }
-
-        public void remove(){
-            super.remove();
         }
     }
 
     public static class Values<V> extends MapIterator<V> implements Iterable<V>, Iterator<V>{
         public Values(IntMap<V> map){
             super(map);
-        }
-
-        public boolean hasNext(){
-            if(!valid) throw new ArcRuntimeException("#iterator() cannot be used nested.");
-            return hasNext;
         }
 
         public V next(){
@@ -847,10 +876,6 @@ public class IntMap<V> implements Iterable<IntMap.Entry<V>>{
             return value;
         }
 
-        public Iterator<V> iterator(){
-            return this;
-        }
-
         /** Returns a new array containing the remaining values. */
         public Seq<V> toArray(){
             Seq<V> array = new Seq<>(true, map.size);
@@ -859,17 +884,22 @@ public class IntMap<V> implements Iterable<IntMap.Entry<V>>{
             return array;
         }
 
-        public void remove(){
-            super.remove();
+        @Override
+        public Iterator<V> iterator(){
+            return this;
         }
     }
 
-    public static class Keys extends MapIterator<Object>{
+    public static class Keys extends MapIterator<Object> implements Iterable<Integer>, Iterator<Integer>{
         public Keys(IntMap<?> map){
             super((IntMap<Object>)map);
         }
 
-        public int next(){
+        public Integer next(){
+            return nextKey();
+        }
+
+        public int nextKey(){
             if(!hasNext) throw new NoSuchElementException();
             if(!valid) throw new ArcRuntimeException("#iterator() cannot be used nested.");
             int key = nextIndex == INDEX_ZERO ? 0 : map.keyTable[nextIndex];
@@ -882,8 +912,13 @@ public class IntMap<V> implements Iterable<IntMap.Entry<V>>{
         public IntSeq toArray(){
             IntSeq array = new IntSeq(true, map.size);
             while(hasNext)
-                array.add(next());
+                array.add(nextKey());
             return array;
+        }
+
+        @Override
+        public Iterator<Integer> iterator(){
+            return this;
         }
     }
 }

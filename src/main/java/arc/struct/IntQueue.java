@@ -1,5 +1,7 @@
 package arc.struct;
 
+import arc.func.*;
+
 import java.util.NoSuchElementException;
 
 /** Queue for ints. */
@@ -24,6 +26,12 @@ public class IntQueue{
     /** Creates a new Queue which can hold the specified number of values without needing to resize backing array. */
     public IntQueue(int initialSize){
         this.values = new int[initialSize];
+    }
+
+    public void each(Intc consumer){
+        for(int i = 0; i < size; i++){
+            consumer.get(values[i]);
+        }
     }
 
     /**
@@ -297,6 +305,54 @@ public class IntQueue{
         this.size = 0;
     }
 
+    @Override
+    public int hashCode(){
+        final int size = this.size;
+        final int[] values = this.values;
+        final int backingLength = values.length;
+        int index = this.head;
+
+        int hash = size + 1;
+        for(int s = 0; s < size; s++){
+            final int value = values[index];
+            hash *= 31;
+            hash += Integer.hashCode(value);
+            index++;
+            if(index == backingLength) index = 0;
+        }
+
+        return hash;
+    }
+
+    @Override
+    public boolean equals(Object o){
+        if(this == o) return true;
+        if(!(o instanceof IntQueue)) return false;
+        IntQueue q = (IntQueue)o;
+        final int size = this.size;
+        if(q.size != size) return false;
+
+        final int[] myValues = this.values;
+        final int myBackingLength = myValues.length;
+        final int[] itsValues = q.values;
+        final int itsBackingLength = itsValues.length;
+
+        int myIndex = head;
+        int itsIndex = q.head;
+        for(int s = 0; s < size; s++){
+            int myValue = myValues[myIndex];
+            int itsValue = itsValues[itsIndex];
+
+            if(myValue != itsValue) return false;
+            myIndex++;
+            itsIndex++;
+            if(myIndex == myBackingLength) myIndex = 0;
+            if(itsIndex == itsBackingLength) itsIndex = 0;
+        }
+        return true;
+    }
+
+    @Override
     public String toString(){
         if(size == 0){
             return "[]";

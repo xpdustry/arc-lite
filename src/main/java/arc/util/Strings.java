@@ -9,7 +9,6 @@ import java.io.*;
 import java.net.*;
 import java.nio.charset.*;
 import java.security.*;
-import java.text.*;
 import java.util.*;
 import java.util.regex.*;
 
@@ -34,16 +33,20 @@ public class Strings{
         }
     }
 
-    //https://stackoverflow.com/a/3758880
-    public static String formatByteCount(long bytes){
-        if(-1000 < bytes && bytes < 1000) return bytes + " B";
+    public static String formatByteCount(long v){
+        return formatSize(v, 1000, "B");
+    }
 
-        CharacterIterator ci = new StringCharacterIterator("kMGTPE");
-        while(bytes <= -999_950 || bytes >= 999_950){
-            bytes /= 1000;
-            ci.next();
+    public static String formatSize(long value, int base, String unit){
+        String negated = "";
+        if(value < 0){
+            negated = "-";
+            value = -value;
         }
-        return String.format("%.1f %cB", bytes / 1000.0, ci.current());
+        if(value < base) return negated + value + ' ' + unit;
+        int z = (int)(Math.log(value) / Math.log(base));
+        double v = value / Math.pow(base, z);
+        return negated + (int)v + '.' + (int)((v * 10) % 10) + ' ' + "KMGTPE".charAt(z - 1) + unit;
     }
 
     //https://stackoverflow.com/a/9855338
@@ -85,15 +88,13 @@ public class Strings{
         }
         return total;
     }
-    
+
     public static int count(String str, String substring){
         int lastIndex = 0;
         int count = 0;
 
         while(lastIndex != -1){
-
             lastIndex = str.indexOf(substring, lastIndex);
-
             if(lastIndex != -1){
                 count ++;
                 lastIndex += substring.length();
@@ -275,7 +276,7 @@ public class Strings{
         }
         return -1; // Unclosed color tag.
     }
-    
+
     /** Removes colors, glyphs and leading spaces. */
     public static String normalize(String str){
         return stripGlyphs(stripColors(str)).trim();
@@ -308,7 +309,7 @@ public class Strings{
     }
 
     public static String format(String text, Object... args){
-        if(args.length > 0){            
+        if(args.length > 0){
             StringBuilder out = new StringBuilder(text.length() + args.length*2);
             format(out, text, args);
             return out.toString();
@@ -388,31 +389,37 @@ public class Strings{
 
         return dp[x.length()][y.length()];
     }
-    
+
     /** Taken from the {@link String#repeat(int)} method of JDK 11 */
     public static String repeat(String str, int count){
         if(count < 0) throw new IllegalArgumentException("count is negative: " + count);
         if(count == 1) return str;
-        
+
         final byte[] value = str.getBytes();
         final int len = value.length;
         if(len == 0 || count == 0) return "";
-        if(Integer.MAX_VALUE / count < len) 
+        if(Integer.MAX_VALUE / count < len)
             throw new OutOfMemoryError("Required length exceeds implementation limit");
-        if(len == 1){ 
-            final byte[] single = new byte[count]; 
-            java.util.Arrays.fill(single, value[0]); 
-            return new String(single); 
+        if(len == 1){
+            final byte[] single = new byte[count];
+            Arrays.fill(single, value[0]);
+            return new String(single);
         }
-        
+
         final int limit = len * count;
         final byte[] multiple = new byte[limit];
         System.arraycopy(value, 0, multiple, 0, len);
         int copied = len;
-        for(; copied < limit - copied; copied <<= 1) 
+        for(; copied < limit - copied; copied <<= 1)
             System.arraycopy(multiple, 0, multiple, copied, copied);
         System.arraycopy(multiple, 0, multiple, copied, limit - copied);
         return new String(multiple);
+    }
+
+    public static String repeat(char c, int count){
+        final char[] single = new char[count];
+        Arrays.fill(single, c);
+        return new String(single);
     }
 
     /** Returns the case-independent biased levenshtein distance between two strings. */
@@ -480,7 +487,7 @@ public class Strings{
 
         return result.toString();
     }
-    
+
     public static String kebabize(String s){
         StringBuilder sb = new StringBuilder(s.length());
         boolean sep = true;
@@ -567,7 +574,7 @@ public class Strings{
         int p = parseInt(s);
         return p >= 0;
     }
-    
+
     /** Returns Integer.MIN_VALUE if parsing failed. */
     public static int parseInt(String s){
         return parseInt(s, Integer.MIN_VALUE);
@@ -628,7 +635,7 @@ public class Strings{
             return negative ? result : -result;
         }
     }
-    
+
     public static boolean canParseLong(String s){
         return parseLong(s) != Long.MIN_VALUE;
     }
@@ -688,7 +695,7 @@ public class Strings{
     }
     public static double parseDouble(String value){
         return parseDouble(value, Double.MIN_VALUE);
-    }      
+    }
     public static double parseDouble(String value, double defaultValue){
         return parseDouble(value, 0, value.length(), defaultValue);
     }
@@ -913,7 +920,7 @@ public class Strings{
     public static <T> void toSentence(StringBuilder builder, Iterable<T> list, Cons2<StringBuilder, T> stringifier, String or, String and){
         Iterator<T> iter = list.iterator();
         if(!iter.hasNext()) return;
-        
+
         stringifier.get(builder, iter.next());
         while(iter.hasNext()){
             T tmp = iter.next();
@@ -928,6 +935,14 @@ public class Strings{
             if(predicate.get(src.charAt(i))) return true;
         }
         return false;
+    }
+
+    /** {@link String#matches(String)} but with a predicate. */
+    public static boolean matches(String src, Boolf<Character> predicate){
+        for(int i = 0, n = src.length(); i < n; i++){
+            if(!predicate.get(src.charAt(i))) return false;
+        }
+        return true;
     }
 
     public static String hueToColorTag(int hue){
@@ -1056,56 +1071,118 @@ public class Strings{
         }
     }
 
+    public static boolean isVersionAtLeast(String currentVersion, String newVersion){
+        return compareVersion(currentVersion, newVersion, 0) < 0;
+    }
+
+    public static boolean isVersionAtLeast(String currentVersion, String newVersion, int maxDepth){
+        return compareVersion(currentVersion, newVersion, maxDepth) < 0;
+    }
+
+    public static int compareVersion(String currentVersion, String newVersion){
+        return compareVersion(currentVersion, newVersion, 0);
+    }
+
     /**
-     * @return whether {@code newVersion} is greater than {@code currentVersion}. (e.g. {@code "v146" > "124.1"})
+     * Compare if {@code newVersion} is greater or less than {@code currentVersion}, e.g. "v146" > "124.1". <br>
+     * {@code maxDepth} defines the number of comparisons of version segments, allowing sub-versions to be ignored. (default is 0)
+     *
      * @apiNote can handle dots and dashes in the version and makes very fast comparison. <br>
      *          Also ignores non-int parts. (e.g. {@code "v1.2-rc36"}, the {@code "rc36"} part will be ignored)
      */
-    public static boolean isVersionAtLeast(String currentVersion, String newVersion){
-        if(currentVersion == null || newVersion == null || currentVersion.isEmpty() || newVersion.isEmpty()) 
-            return false;
-        
+    @SuppressWarnings("null")
+    public static int compareVersion(String currentVersion, String newVersion, int maxDepth){
+        if(maxDepth < 1) maxDepth = Integer.MAX_VALUE;
+        boolean currentEmpty = currentVersion == null || currentVersion.isEmpty();
+        boolean newEmpty = newVersion == null || newVersion.isEmpty();
+
+        if(currentEmpty && newEmpty) return 0;
+        else if(currentEmpty && !newEmpty) return -1;
+        else if(!currentEmpty && newEmpty) return 1;
+
         int last1 = currentVersion.charAt(0) == 'v' ? 1 : 0, last2 = newVersion.charAt(0) == 'v' ? 1 : 0,
-            len1 = currentVersion.length(), len2 = newVersion.length(), 
-            dot1 = 0, dot2 = 0, 
-            dash1 = 0, dash2 = 0, 
-            part1 = 0, part2 = 0;
-        
-        while((dot1 != -1 && dot2 != -1) && (last1 < len1 && last2 < len2)){
+            len1 = currentVersion.length(),
+            len2 = newVersion.length(),
+            dash1 = 0, dash2 = 0,
+            dot1 = 0, dot2 = 0,
+            p1 = 0, p2 = 0;
+
+        while((dot1 != -1 && dot2 != -1) && (last1 < len1 && last2 < len2) && maxDepth-- > 0){
             dot1 = currentVersion.indexOf('.', last1);
             dash1 = currentVersion.indexOf('-', last1);
             dot2 = newVersion.indexOf('.', last2);
             dash2 = newVersion.indexOf('-', last2);
-            
+
             if(dot1 == -1) dot1 = dash1;
             if(dash1 != -1) dot1 = Math.min(dot1, dash1);
             if(dot1 == -1) dot1 = len1;
             if(dot2 == -1) dot2 = dash2;
             if(dash2 != -1) dot2 = Math.min(dot2, dash2);
             if(dot2 == -1) dot2 = len2;
-            
-            part1 = parseInt(currentVersion, 10, 0, last1, dot1);
-            part2 = parseInt(newVersion, 10, 0, last2, dot2);
+
+            p1 = parseInt(currentVersion, 10, 0, last1, dot1);
+            p2 = parseInt(newVersion, 10, 0, last2, dot2);
             last1 = dot1 + 1;
             last2 = dot2 + 1;
-            
-            if(part1 != part2) return part2 > part1;
+
+            if(p1 != p2) return p1 < p2 ? -1 : 1;
         }
-        
+
+        if(maxDepth <= 0) return p1 < p2 ? -1 : 1;
+
         // Continue iteration on newVersion to see if it's just leading zeros.
         while(dot2 != -1 && last2 < len2){
             dot2 = newVersion.indexOf('.', last2);
             dash2 = newVersion.indexOf('-', last2);
-            
+
             if(dot2 == -1) dot2 = dash2;
             if(dash2 != -1) dot2 = Math.min(dot2, dash2);
             if(dot2 == -1) dot2 = len2;
-            
-            part2 = parseInt(newVersion, 10, 0, last2, dot2);
+
+            p2 = parseInt(newVersion, 10, 0, last2, dot2);
             last2 = dot2 + 1;
-            
-            if(part2 > 0) return true;
+
+            if(p2 > 0) return -1;
         }
-        return false;
+        return 0;
+    }
+
+    private static final Object[][] TIME_PERIODS = {
+        {"year", "years", "y", 1000L * 60 * 60 * 24 * 365},
+        {"month", "months", "mo", 1000L * 60 * 60 * 24 * 30},
+        // {"week", "weeks", "w", 1000L*60*60*24*7},
+        {"day", "days", "d", 1000L * 60 * 60 * 24},
+        {"hour", "hours", "h", 1000L * 60 * 60},
+        {"minute", "minutes", "m", 1000L * 60},
+        {"second", "seconds", "s", 1000L},
+        // {"millisecond", "millisecond", "ms", 1L},
+    };
+
+    /**
+     * Convert {@code millis} duration to localized human readable format (e.g. 123456 -> 2 minutes and 3 seconds), using the
+     * logger system.
+     *
+     * @param millis milliseconds to convert to duration
+     * @param narrow use short units or not. E.g. "5 months" if {@code false}, "5mo" if {@code true}
+     */
+    public static String formatDuration(long millis, boolean narrow){
+        boolean negative = millis < 0;
+        millis = Math.abs(millis);
+        StringBuilder builder = new StringBuilder();
+        boolean space = false;
+
+        for(Object[] element : TIME_PERIODS){
+            long period = (long)element[3];
+            if(millis >= period){
+                long count = millis / period;
+                millis %= period;
+                if(space) builder.append(' ');
+                if(negative) builder.append('-');
+                builder.append(count).append(element[narrow ? 2 : count > 1 ? 1 : 0]);
+                space = true;
+            }
+        }
+
+        return builder.toString();
     }
 }

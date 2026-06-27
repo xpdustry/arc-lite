@@ -40,6 +40,7 @@ public class OrderedSet<T> extends ObjectSet<T>{
         return items.first();
     }
 
+    @Override
     public boolean add(T key){
         if(!super.add(key)) return false;
         items.add(key);
@@ -56,6 +57,7 @@ public class OrderedSet<T> extends ObjectSet<T>{
         return true;
     }
 
+    @Override
     public boolean remove(T key){
         if(!super.remove(key)) return false;
         items.remove(key, false);
@@ -68,11 +70,13 @@ public class OrderedSet<T> extends ObjectSet<T>{
         return key;
     }
 
+    @Override
     public void clear(int maximumCapacity){
         items.clear();
         super.clear(maximumCapacity);
     }
 
+    @Override
     public void clear(){
         items.clear();
         super.clear();
@@ -117,6 +121,7 @@ public class OrderedSet<T> extends ObjectSet<T>{
         return buffer.toString();
     }
 
+    @Override
     public String toString(String separator){
         return items.toString(separator);
     }

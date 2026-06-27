@@ -45,11 +45,13 @@ public class OrderedMap<K, V> extends ObjectMap<K, V>{
         keys = new Seq<>(map.keys);
     }
 
+    @Override
     public V put(K key, V value){
         if(!containsKey(key)) keys.add(key);
         return super.put(key, value);
     }
 
+    @Override
     public V remove(K key){
         keys.remove(key, false);
         return super.remove(key);
@@ -59,11 +61,13 @@ public class OrderedMap<K, V> extends ObjectMap<K, V>{
         return super.remove(keys.remove(index));
     }
 
+    @Override
     public void clear(int maximumCapacity){
         keys.clear();
         super.clear(maximumCapacity);
     }
 
+    @Override
     public void clear(){
         keys.clear();
         super.clear();
@@ -73,6 +77,7 @@ public class OrderedMap<K, V> extends ObjectMap<K, V>{
         return keys;
     }
 
+    @Override
     public Entries<K, V> iterator(){
         return entries();
     }
@@ -81,6 +86,7 @@ public class OrderedMap<K, V> extends ObjectMap<K, V>{
      * Returns an iterator for the entries in the map. Remove is supported. Note that the same iterator instance is returned each
      * time this method is called. Use the {@link OrderedMapEntries} constructor for nested or multithreaded iteration.
      */
+    @Override
     public Entries<K, V> entries(){
         if(entries1 == null){
             entries1 = new OrderedMapEntries<>(this);
@@ -102,6 +108,7 @@ public class OrderedMap<K, V> extends ObjectMap<K, V>{
      * Returns an iterator for the values in the map. Remove is supported. Note that the same iterator instance is returned each
      * time this method is called. Use the {@link OrderedMapValues} constructor for nested or multithreaded iteration.
      */
+    @Override
     public Values<V> values(){
         if(values1 == null){
             values1 = new OrderedMapValues<>(this);
@@ -123,6 +130,7 @@ public class OrderedMap<K, V> extends ObjectMap<K, V>{
      * Returns an iterator for the keys in the map. Remove is supported. Note that the same iterator instance is returned each
      * time this method is called. Use the {@link OrderedMapKeys} constructor for nested or multithreaded iteration.
      */
+    @Override
     public Keys<K> keys(){
         if(keys1 == null){
             keys1 = new OrderedMapKeys<>(this);
@@ -140,6 +148,7 @@ public class OrderedMap<K, V> extends ObjectMap<K, V>{
         return keys2;
     }
 
+    @Override
     public String toString(){
         if(size == 0) return "{}";
         StringBuilder buffer = new StringBuilder(32);
@@ -164,11 +173,13 @@ public class OrderedMap<K, V> extends ObjectMap<K, V>{
             keys = map.keys;
         }
 
+        @Override
         public void reset(){
             nextIndex = 0;
             hasNext = map.size > 0;
         }
 
+        @Override
         public Entry<K, V> next(){
             if(!hasNext) throw new NoSuchElementException();
             if(!valid) throw new ArcRuntimeException("#iterator() cannot be used nested.");
@@ -179,6 +190,7 @@ public class OrderedMap<K, V> extends ObjectMap<K, V>{
             return entry;
         }
 
+        @Override
         public void remove(){
             if(currentIndex < 0) throw new IllegalStateException("next must be called before remove.");
             map.remove(entry.key);
@@ -194,11 +206,13 @@ public class OrderedMap<K, V> extends ObjectMap<K, V>{
             keys = map.keys;
         }
 
+        @Override
         public void reset(){
             nextIndex = 0;
             hasNext = map.size > 0;
         }
 
+        @Override
         public K next(){
             if(!hasNext) throw new NoSuchElementException();
             if(!valid) throw new ArcRuntimeException("#iterator() cannot be used nested.");
@@ -209,6 +223,7 @@ public class OrderedMap<K, V> extends ObjectMap<K, V>{
             return key;
         }
 
+        @Override
         public void remove(){
             if(currentIndex < 0) throw new IllegalStateException("next must be called before remove.");
             ((OrderedMap<K, ?>)map).removeIndex(nextIndex - 1);
@@ -225,11 +240,13 @@ public class OrderedMap<K, V> extends ObjectMap<K, V>{
             keys = map.keys;
         }
 
+        @Override
         public void reset(){
             nextIndex = 0;
             hasNext = map.size > 0;
         }
 
+        @Override
         public V next(){
             if(!hasNext) throw new NoSuchElementException();
             if(!valid) throw new ArcRuntimeException("#iterator() cannot be used nested.");
@@ -240,6 +257,7 @@ public class OrderedMap<K, V> extends ObjectMap<K, V>{
             return value;
         }
 
+        @Override
         public void remove(){
             if(currentIndex < 0) throw new IllegalStateException("next must be called before remove.");
             ((OrderedMap<?, V>)map).removeIndex(currentIndex);

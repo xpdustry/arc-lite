@@ -24,12 +24,10 @@ public class Server implements EndPoint{
     private int emptySelects;
     private ServerSocketChannel serverChannel;
     private UdpConnection udp;
-    private Connection[] connections = {};
-    private ObjectMap<InetSocketAddress, Connection> udpAddressToConnection = new ObjectMap<>();
-    private IntMap<Connection> pendingConnections = new IntMap<>();
-    protected NetListener[] listeners = {};
-    private Object listenerLock = new Object();
-    private volatile boolean shutdown;
+    protected Connection[] connections = {};
+    protected final ObjectMap<InetSocketAddress, Connection> udpAddressToConnection = new ObjectMap<>();
+    protected final IntMap<Connection> pendingConnections = new IntMap<>();
+    protected volatile boolean shutdown;
     private final Object updateLock = new Object();
     private Thread updateThread;
     protected int multicastPort = 21010;
@@ -38,30 +36,11 @@ public class Server implements EndPoint{
     protected ServerDiscoveryHandler discoveryHandler;
     private ServerConnectFilter connectFilter;
 
-    protected NetListener dispatchListener = new NetListener(){
-        public void connected(Connection connection){
-            NetListener[] listeners = Server.this.listeners;
-            for(int i = 0, n = listeners.length; i < n; i++)
-                listeners[i].connected(connection);
-        }
-
+    protected DispatchListener dispatchListener = new DispatchListener(){
+        @Override
         public void disconnected(Connection connection, DcReason reason){
             removeConnection(connection);
-            NetListener[] listeners = Server.this.listeners;
-            for(int i = 0, n = listeners.length; i < n; i++)
-                listeners[i].disconnected(connection, reason);
-        }
-
-        public void received(Connection connection, Object object){
-            NetListener[] listeners = Server.this.listeners;
-            for(int i = 0, n = listeners.length; i < n; i++)
-                listeners[i].received(connection, object);
-        }
-
-        public void idle(Connection connection){
-            NetListener[] listeners = Server.this.listeners;
-            for(int i = 0, n = listeners.length; i < n; i++)
-                listeners[i].idle(connection);
+            super.disconnected(connection, reason);
         }
     };
 
@@ -162,7 +141,7 @@ public class Server implements EndPoint{
                 }
 
                 if(multicastGroup != null && (udpPort == null || multicastPort != udpPort.getPort())){
-                    discoveryReceiver = new DiscoveryReceiver(multicastPort);
+                    discoveryReceiver = new DiscoveryReceiver();
                     discoveryReceiver.start();
                 }
             }catch(IOException ex){
@@ -326,14 +305,11 @@ public class Server implements EndPoint{
         }
         long time = System.currentTimeMillis();
         Connection[] connections = this.connections;
-        for(int i = 0, n = connections.length; i < n; i++){
-            Connection connection = connections[i];
+        for(Connection connection : connections){
             if(connection.tcp.isTimedOut(time)){
                 connection.close(DcReason.timeout);
-            }else{
-                if(connection.tcp.needsKeepAlive(time))
-                    connection.sendTCP(FrameworkMessage.keepAlive);
-            }
+            }else if(connection.tcp.needsKeepAlive(time))
+                connection.sendTCP(FrameworkMessage.keepAlive);
             if(connection.isIdle())
                 connection.notifyIdle();
         }
@@ -342,8 +318,7 @@ public class Server implements EndPoint{
     private void keepAlive(){
         long time = System.currentTimeMillis();
         Connection[] connections = this.connections;
-        for(int i = 0, n = connections.length; i < n; i++){
-            Connection connection = connections[i];
+        for(Connection connection : connections){
             if(connection.tcp.needsKeepAlive(time))
                 connection.sendTCP(FrameworkMessage.keepAlive);
         }
@@ -411,7 +386,7 @@ public class Server implements EndPoint{
         }
     }
 
-    private int generateId(){
+    protected int generateId(){
         int[] id = {0}; //java lambda as just amazing aren't they????
         Rand rand = new Rand(); //not really concerned about allocating an object with two longs
         do{
@@ -428,7 +403,7 @@ public class Server implements EndPoint{
         return new Connection();
     }
 
-    private void addConnection(Connection connection){
+    protected void addConnection(Connection connection){
         Connection[] newConnections = new Connection[connections.length + 1];
         newConnections[0] = connection;
         System.arraycopy(connections, 0, newConnections, 1, connections.length);
@@ -439,7 +414,7 @@ public class Server implements EndPoint{
         }
     }
 
-    void removeConnection(Connection connection){
+    protected void removeConnection(Connection connection){
         ArrayList<Connection> temp = new ArrayList<>(Arrays.asList(connections));
         temp.remove(connection);
         connections = temp.toArray(new Connection[0]);
@@ -455,16 +430,14 @@ public class Server implements EndPoint{
 
     public void sendToAllTCP(Object object){
         Connection[] connections = this.connections;
-        for(int i = 0, n = connections.length; i < n; i++){
-            Connection connection = connections[i];
+        for(Connection connection : connections){
             connection.sendTCP(object);
         }
     }
 
     public void sendToAllExceptTCP(int connectionID, Object object){
         Connection[] connections = this.connections;
-        for(int i = 0, n = connections.length; i < n; i++){
-            Connection connection = connections[i];
+        for(Connection connection : connections){
             if(connection.id != connectionID)
                 connection.sendTCP(object);
         }
@@ -472,8 +445,7 @@ public class Server implements EndPoint{
 
     public void sendToTCP(int connectionID, Object object){
         Connection[] connections = this.connections;
-        for(int i = 0, n = connections.length; i < n; i++){
-            Connection connection = connections[i];
+        for(Connection connection : connections){
             if(connection.id == connectionID){
                 connection.sendTCP(object);
                 break;
@@ -483,16 +455,14 @@ public class Server implements EndPoint{
 
     public void sendToAllUDP(Object object){
         Connection[] connections = this.connections;
-        for(int i = 0, n = connections.length; i < n; i++){
-            Connection connection = connections[i];
+        for(Connection connection : connections){
             connection.sendUDP(object);
         }
     }
 
     public void sendToAllExceptUDP(int connectionID, Object object){
         Connection[] connections = this.connections;
-        for(int i = 0, n = connections.length; i < n; i++){
-            Connection connection = connections[i];
+        for(Connection connection : connections){
             if(connection.id != connectionID)
                 connection.sendUDP(object);
         }
@@ -500,8 +470,7 @@ public class Server implements EndPoint{
 
     public void sendToUDP(int connectionID, Object object){
         Connection[] connections = this.connections;
-        for(int i = 0, n = connections.length; i < n; i++){
-            Connection connection = connections[i];
+        for(Connection connection : connections){
             if(connection.id == connectionID){
                 connection.sendUDP(object);
                 break;
@@ -515,38 +484,11 @@ public class Server implements EndPoint{
      * Should be called before connect().
      */
     public void addListener(NetListener listener){
-        if(listener == null)
-            throw new IllegalArgumentException("listener cannot be null.");
-        synchronized(listenerLock){
-            NetListener[] listeners = this.listeners;
-            int n = listeners.length;
-            for(int i = 0; i < n; i++)
-                if(listener == listeners[i])
-                    return;
-            NetListener[] newListeners = new NetListener[n + 1];
-            newListeners[0] = listener;
-            System.arraycopy(listeners, 0, newListeners, 1, n);
-            this.listeners = newListeners;
-        }
+        dispatchListener.addListener(listener);
     }
 
     public void removeListener(NetListener listener){
-        if(listener == null)
-            throw new IllegalArgumentException("listener cannot be null.");
-        synchronized(listenerLock){
-            NetListener[] listeners = this.listeners;
-            int n = listeners.length;
-            NetListener[] newListeners = new NetListener[n - 1];
-            for(int i = 0, ii = 0; i < n; i++){
-                NetListener copyListener = listeners[i];
-                if(listener == copyListener)
-                    continue;
-                if(ii == n - 1)
-                    return;
-                newListeners[ii++] = copyListener;
-            }
-            this.listeners = newListeners;
-        }
+        dispatchListener.removeListener(listener);
     }
 
     /**
@@ -554,8 +496,7 @@ public class Server implements EndPoint{
      */
     public void close(){
         Connection[] connections = this.connections;
-        for(int i = 0, n = connections.length; i < n; i++)
-            connections[i].close(DcReason.closed);
+        for(Connection connection : connections) connection.close(DcReason.closed);
         this.connections = new Connection[0];
 
         ServerSocketChannel serverChannel = this.serverChannel;
@@ -615,11 +556,6 @@ public class Server implements EndPoint{
     class DiscoveryReceiver{
         MulticastSocket socket = null;
         Thread multicastThread;
-        int multicastPort;
-
-        DiscoveryReceiver(int multicastPort){
-            this.multicastPort = multicastPort;
-        }
 
         void close(){
             try{

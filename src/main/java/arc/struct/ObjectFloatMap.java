@@ -89,6 +89,12 @@ public class ObjectFloatMap<K> implements Iterable<ObjectFloatMap.Entry<K>>{
         }
     }
 
+    public void each(Cons2<K, Float> cons){
+        for(Entry<K> e : this){
+            cons.get(e.key, e.value);
+        }
+    }
+
     public void put(K key, float value){
         if(key == null) throw new IllegalArgumentException("key cannot be null.");
         K[] keyTable = this.keyTable;
@@ -516,6 +522,7 @@ public class ObjectFloatMap<K> implements Iterable<ObjectFloatMap.Entry<K>>{
         return (h ^ h >>> hashShift) & mask;
     }
 
+    @Override
     public int hashCode(){
         int h = 0;
         K[] keyTable = this.keyTable;
@@ -532,6 +539,7 @@ public class ObjectFloatMap<K> implements Iterable<ObjectFloatMap.Entry<K>>{
         return h;
     }
 
+    @Override
     public boolean equals(Object obj){
         if(obj == this) return true;
         if(!(obj instanceof ObjectFloatMap)) return false;
@@ -551,6 +559,7 @@ public class ObjectFloatMap<K> implements Iterable<ObjectFloatMap.Entry<K>>{
         return true;
     }
 
+    @Override
     public String toString(){
         if(size == 0) return "{}";
         StringBuilder buffer = new StringBuilder(32);
@@ -649,6 +658,7 @@ public class ObjectFloatMap<K> implements Iterable<ObjectFloatMap.Entry<K>>{
         public K key;
         public float value;
 
+        @Override
         public String toString(){
             return key + "=" + value;
         }
@@ -694,6 +704,11 @@ public class ObjectFloatMap<K> implements Iterable<ObjectFloatMap.Entry<K>>{
             currentIndex = -1;
             map.size--;
         }
+
+        public boolean hasNext(){
+            if(!valid) throw new ArcRuntimeException("#iterator() cannot be used nested.");
+            return hasNext;
+        }
     }
 
     public static class Entries<K> extends MapIterator<K> implements Iterable<Entry<K>>, Iterator<Entry<K>>{
@@ -704,6 +719,7 @@ public class ObjectFloatMap<K> implements Iterable<ObjectFloatMap.Entry<K>>{
         }
 
         /** Note the same entry instance is returned each time this method is called. */
+        @Override
         public Entry<K> next(){
             if(!hasNext) throw new NoSuchElementException();
             if(!valid) throw new ArcRuntimeException("#iterator() cannot be used nested.");
@@ -715,31 +731,23 @@ public class ObjectFloatMap<K> implements Iterable<ObjectFloatMap.Entry<K>>{
             return entry;
         }
 
-        public boolean hasNext(){
-            if(!valid) throw new ArcRuntimeException("#iterator() cannot be used nested.");
-            return hasNext;
-        }
-
+        @Override
         public Entries<K> iterator(){
             return this;
         }
-
-        public void remove(){
-            super.remove();
-        }
     }
 
-    public static class Values extends MapIterator<Object>{
+    public static class Values extends MapIterator<Object> implements Iterable<Float>, Iterator<Float>{
         public Values(ObjectFloatMap<?> map){
             super((ObjectFloatMap<Object>)map);
         }
 
-        public boolean hasNext(){
-            if(!valid) throw new ArcRuntimeException("#iterator() cannot be used nested.");
-            return hasNext;
+        @Override
+        public Float next(){
+            return nextValue();
         }
 
-        public float next(){
+        public float nextValue(){
             if(!hasNext) throw new NoSuchElementException();
             if(!valid) throw new ArcRuntimeException("#iterator() cannot be used nested.");
             float value = map.valueTable[nextIndex];
@@ -752,8 +760,13 @@ public class ObjectFloatMap<K> implements Iterable<ObjectFloatMap.Entry<K>>{
         public FloatSeq toArray(){
             FloatSeq array = new FloatSeq(true, map.size);
             while(hasNext)
-                array.add(next());
+                array.add(nextValue());
             return array;
+        }
+
+        @Override
+        public Iterator<Float> iterator(){
+            return this;
         }
     }
 
@@ -762,11 +775,7 @@ public class ObjectFloatMap<K> implements Iterable<ObjectFloatMap.Entry<K>>{
             super(map);
         }
 
-        public boolean hasNext(){
-            if(!valid) throw new ArcRuntimeException("#iterator() cannot be used nested.");
-            return hasNext;
-        }
-
+        @Override
         public K next(){
             if(!hasNext) throw new NoSuchElementException();
             if(!valid) throw new ArcRuntimeException("#iterator() cannot be used nested.");
@@ -774,10 +783,6 @@ public class ObjectFloatMap<K> implements Iterable<ObjectFloatMap.Entry<K>>{
             currentIndex = nextIndex;
             findNextIndex();
             return key;
-        }
-
-        public Keys<K> iterator(){
-            return this;
         }
 
         /** Returns a new array containing the remaining keys. */
@@ -795,8 +800,9 @@ public class ObjectFloatMap<K> implements Iterable<ObjectFloatMap.Entry<K>>{
             return array;
         }
 
-        public void remove(){
-            super.remove();
+        @Override
+        public Keys<K> iterator(){
+            return this;
         }
     }
 }

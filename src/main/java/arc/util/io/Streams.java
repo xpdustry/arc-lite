@@ -82,7 +82,7 @@ public final class Streams{
     public static int copy(InputStream input, ByteBuffer output, byte[] buffer) throws IOException{
         int startPosition = output.position(), total = 0, bytesRead;
         while((bytesRead = input.read(buffer)) != -1){
-            Buffers.copy(buffer, 0, output, bytesRead);
+            output.put(buffer, 0, bytesRead);
             total += bytesRead;
             output.position(startPosition + total);
         }

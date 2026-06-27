@@ -88,7 +88,7 @@ public class ByteBufferInput implements DataInput{
 
     @Override
     public String readLine(){
-        throw new RuntimeException("Stub!");
+        throw new RuntimeException("Stub!"); //too lazy to reimplement that
     }
 
     @Override

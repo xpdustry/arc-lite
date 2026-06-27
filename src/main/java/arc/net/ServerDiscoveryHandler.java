@@ -15,7 +15,7 @@ public interface ServerDiscoveryHandler{
      */
     void onDiscoverReceived(InetAddress address, ReponseHandler handler) throws IOException;
 
-    interface ReponseHandler{
+    public interface ReponseHandler{
         void respond(ByteBuffer buffer) throws IOException;
     }
 }

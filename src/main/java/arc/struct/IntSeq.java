@@ -438,6 +438,7 @@ public class IntSeq{
         return array;
     }
 
+    @Override
     public int hashCode(){
         if(!ordered) return super.hashCode();
         int[] items = this.items;
@@ -447,6 +448,7 @@ public class IntSeq{
         return h;
     }
 
+    @Override
     public boolean equals(Object object){
         if(object == this) return true;
         if(!ordered) return false;
@@ -462,6 +464,7 @@ public class IntSeq{
         return true;
     }
 
+    @Override
     public String toString(){
         if(size == 0) return "[]";
         int[] items = this.items;

@@ -7,37 +7,12 @@ public class MockApplication implements Application{
 
     @Override
     public Seq<ApplicationListener> getListeners(){
-        return new Seq<>();
+        return new Seq<>(0);
     }
 
     @Override
     public ApplicationType getType(){
         return ApplicationType.headless;
-    }
-
-    @Override
-    public long getFrameId(){ 
-        return 0; 
-    }
-
-    @Override
-    public float getDeltaTime(){ 
-        return 1f; 
-    }
-
-    @Override
-    public int getFramesPerSecond(){ 
-        return 60; 
-    }
-
-    @Override
-    public String getClipboardText(){
-        return null;
-    }
-
-    @Override
-    public void setClipboardText(String text){
-
     }
 
     @Override

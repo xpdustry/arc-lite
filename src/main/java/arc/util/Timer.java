@@ -140,8 +140,9 @@ public class Timer{
             synchronized(task){
                 if(task.timer != null) throw new IllegalArgumentException("The same task may not be scheduled twice.");
                 task.timer = this;
-                task.executeTimeMillis = System.nanoTime() / 1000000 + (long)(delaySeconds * 1000);
-                task.intervalMillis = (long)(intervalSeconds * 1000);
+                task.delayMillis = (long)(delaySeconds * Time.millisPerSecond);
+                task.executeTimeMillis = Time.nanosMillis() + task.delayMillis;
+                task.intervalMillis = (long)(intervalSeconds * Time.millisPerSecond);
                 task.repeatCount = repeatCount;
                 tasks.add(task);
             }
@@ -175,7 +176,7 @@ public class Timer{
         for(int i = 0, n = tasks.size; i < n; i++){
             Task task = tasks.get(i);
             synchronized(task){
-                task.executeTimeMillis = 0;
+                task.delayMillis = task.executeTimeMillis = 0;
                 task.timer = null;
             }
         }
@@ -230,7 +231,7 @@ public class Timer{
      */
     static abstract public class Task implements Runnable{
         final Application app;
-        long executeTimeMillis, intervalMillis;
+        long delayMillis, executeTimeMillis, intervalMillis;
         int repeatCount;
         volatile Timer timer;
 
@@ -251,16 +252,27 @@ public class Timer{
             if(timer != null){
                 synchronized(timer){
                     synchronized(this){
-                        executeTimeMillis = 0;
+                        delayMillis = executeTimeMillis = 0;
                         this.timer = null;
                         timer.tasks.remove(this, true);
                     }
                 }
             }else{
                 synchronized(this){
-                    executeTimeMillis = 0;
+                    delayMillis = executeTimeMillis = 0;
                     this.timer = null;
                 }
+            }
+        }
+
+        /** Reschelude this task in future. Does nothing if task was previously canceled or finished. */
+        public void reschedule(){
+            synchronized(this){
+                if(timer == null) return;
+                executeTimeMillis = Time.nanosMillis() + delayMillis;
+            }
+            synchronized(threadLock){
+                threadLock.notifyAll();
             }
         }
 
@@ -289,7 +301,8 @@ public class Timer{
      * Manages a single thread for updating timers. Uses application events to pause, resume, and dispose the thread.
      * @author Nathan Sweet
      */
-    static class TimerThread implements Runnable, ApplicationListener{
+    @SuppressWarnings("deprecation")
+    protected static class TimerThread implements Runnable, ApplicationListener{
         final Files files;
         final Seq<Timer> instances = new Seq<>(1);
         Timer instance;
@@ -299,10 +312,7 @@ public class Timer{
             files = Core.files;
             Core.app.addListener(this);
             resume();
-
-            Thread thread = new Thread(this, "Timer");
-            thread.setDaemon(true);
-            thread.start();
+            Threads.daemon("Timer", this);
         }
 
         @Override
@@ -313,7 +323,7 @@ public class Timer{
 
                     long waitMillis = 5000;
                     if(pauseMillis == 0){
-                        long timeMillis = System.nanoTime() / 1000000;
+                        long timeMillis = Time.nanosMillis();
                         for(int i = 0, n = instances.size; i < n; i++){
                             try{
                                 waitMillis = instances.get(i).update(timeMillis, waitMillis);
@@ -338,7 +348,7 @@ public class Timer{
         public void resume(){
             if(Core.app.isDesktop()) return;
             synchronized(threadLock){
-                long delayMillis = System.nanoTime() / 1000000 - pauseMillis;
+                long delayMillis = Time.nanosMillis() - pauseMillis;
                 for(int i = 0, n = instances.size; i < n; i++)
                     instances.get(i).delay(delayMillis);
                 pauseMillis = 0;
@@ -351,7 +361,7 @@ public class Timer{
             //allow tasks to run in the background on desktop
             if(Core.app.isDesktop()) return;
             synchronized(threadLock){
-                pauseMillis = System.nanoTime() / 1000000;
+                pauseMillis = Time.nanosMillis();
                 threadLock.notifyAll();
             }
         }

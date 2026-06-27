@@ -8,11 +8,11 @@ import java.lang.reflect.*;
 public class Reflect{
 
     public static <T> T[] newArray(Class<T> type, int length){
-        return (T[])java.lang.reflect.Array.newInstance(type, length);
+        return (T[])Array.newInstance(type, length);
     }
 
     public static <T> T[] newArray(T[] oldType, int length){
-        return (T[])java.lang.reflect.Array.newInstance(oldType.getClass().getComponentType(), length);
+        return (T[])Array.newInstance(oldType.getClass().getComponentType(), length);
     }
 
     public static boolean isWrapper(Class<?> type){

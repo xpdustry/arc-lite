@@ -1,5 +1,6 @@
 package arc.struct;
 
+import arc.func.*;
 import arc.math.Mathf;
 
 import java.util.Arrays;
@@ -69,6 +70,12 @@ public class ByteSeq{
     /** @see #ByteSeq(byte[]) */
     public static ByteSeq with(byte... array){
         return new ByteSeq(array);
+    }
+
+    public void each(Bytec consumer){
+        for(int i = 0; i < size; i++){
+            consumer.get(items[i]);
+        }
     }
 
     public void add(byte value){
@@ -361,6 +368,7 @@ public class ByteSeq{
         return array;
     }
 
+    @Override
     public int hashCode(){
         if(!ordered) return super.hashCode();
         byte[] items = this.items;
@@ -370,6 +378,7 @@ public class ByteSeq{
         return h;
     }
 
+    @Override
     public boolean equals(Object object){
         if(object == this) return true;
         if(!ordered) return false;
@@ -385,6 +394,7 @@ public class ByteSeq{
         return true;
     }
 
+    @Override
     public String toString(){
         if(size == 0) return "[]";
         byte[] items = this.items;

@@ -1,5 +1,7 @@
 package arc.struct;
 
+import arc.func.Longc;
+
 import java.util.NoSuchElementException;
 
 /** Queue for longs. */
@@ -28,8 +30,14 @@ public class LongQueue{
 
     public LongQueue(long[] array){
         this(Math.max(array.length, 16));
-        for(int i = 0; i < array.length; i++){
-            addLast(array[i]);
+        for(long element : array){
+            addLast(element);
+        }
+    }
+
+    public void each(Longc consumer){
+        for(int i = 0; i < size; i++){
+            consumer.get(values[i]);
         }
     }
 
@@ -314,6 +322,54 @@ public class LongQueue{
         return out;
     }
 
+    @Override
+    public int hashCode(){
+        final int size = this.size;
+        final long[] values = this.values;
+        final int backingLength = values.length;
+        int index = this.head;
+
+        int hash = size + 1;
+        for(int s = 0; s < size; s++){
+            final long value = values[index];
+            hash *= 31;
+            hash += Long.hashCode(value);
+            index++;
+            if(index == backingLength) index = 0;
+        }
+
+        return hash;
+    }
+
+    @Override
+    public boolean equals(Object o){
+        if(this == o) return true;
+        if(!(o instanceof LongQueue)) return false;
+        LongQueue q = (LongQueue)o;
+        final int size = this.size;
+        if(q.size != size) return false;
+
+        final long[] myValues = this.values;
+        final int myBackingLength = myValues.length;
+        final long[] itsValues = q.values;
+        final int itsBackingLength = itsValues.length;
+
+        int myIndex = head;
+        int itsIndex = q.head;
+        for(int s = 0; s < size; s++){
+            long myValue = myValues[myIndex];
+            long itsValue = itsValues[itsIndex];
+
+            if(myValue != itsValue) return false;
+            myIndex++;
+            itsIndex++;
+            if(myIndex == myBackingLength) myIndex = 0;
+            if(itsIndex == itsBackingLength) itsIndex = 0;
+        }
+        return true;
+    }
+
+    @Override
     public String toString(){
         if(size == 0){
             return "[]";

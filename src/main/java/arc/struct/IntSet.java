@@ -4,6 +4,7 @@ import arc.func.Intc;
 import arc.math.Mathf;
 import arc.util.ArcRuntimeException;
 
+import java.util.Iterator;
 import java.util.NoSuchElementException;
 
 /**
@@ -16,7 +17,7 @@ import java.util.NoSuchElementException;
  * @author Nathan Sweet
  */
 @SuppressWarnings("unused")
-public class IntSet{
+public class IntSet implements Iterable<Integer>{
     private static final int PRIME1 = 0xbe1f14b1;
     private static final int PRIME2 = 0xb4b82e39;
     private static final int PRIME3 = 0xced1c241;
@@ -443,6 +444,7 @@ public class IntSet{
         return (h ^ h >>> hashShift) & mask;
     }
 
+    @Override
     public int hashCode(){
         int h = 0;
         for(int i = 0, n = capacity + stashSize; i < n; i++)
@@ -450,6 +452,7 @@ public class IntSet{
         return h;
     }
 
+    @Override
     public boolean equals(Object obj){
         if(!(obj instanceof IntSet)) return false;
         IntSet other = (IntSet)obj;
@@ -460,6 +463,7 @@ public class IntSet{
         return true;
     }
 
+    @Override
     public String toString(){
         if(size == 0) return "[]";
         StringBuilder buffer = new StringBuilder(32);
@@ -507,7 +511,7 @@ public class IntSet{
         return iterator2;
     }
 
-    public static class IntSetIterator{
+    public static class IntSetIterator implements Iterable<Integer>, Iterator<Integer>{
         static final int INDEX_ILLEGAL = -2;
         static final int INDEX_ZERO = -1;
         final IntSet set;
@@ -556,7 +560,16 @@ public class IntSet{
             set.size--;
         }
 
-        public int next(){
+        @Override
+        public boolean hasNext(){
+            return hasNext;
+        }
+
+        public Integer next(){
+            return nextInt();
+        }
+
+        public int nextInt(){
             if(!hasNext) throw new NoSuchElementException();
             if(!valid) throw new ArcRuntimeException("#iterator() cannot be used nested.");
             int key = nextIndex == INDEX_ZERO ? 0 : set.keyTable[nextIndex];
@@ -565,11 +578,16 @@ public class IntSet{
             return key;
         }
 
+        @Override
+        public Iterator<Integer> iterator(){
+            return this;
+        }
+
         /** Returns a new array containing the remaining keys. */
         public IntSeq toArray(){
             IntSeq array = new IntSeq(true, set.size);
             while(hasNext)
-                array.add(next());
+                array.add(nextInt());
             return array;
         }
     }

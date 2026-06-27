@@ -1,5 +1,6 @@
 package arc.struct;
 
+import arc.func.Floatc;
 import arc.math.Mathf;
 import arc.math.geom.Vec2;
 
@@ -70,6 +71,12 @@ public class FloatSeq{
     /** @see #FloatSeq(float[]) */
     public static FloatSeq with(float... array){
         return new FloatSeq(array);
+    }
+
+    public void each(Floatc consumer){
+        for(int i = 0; i < size; i++){
+            consumer.get(items[i]);
+        }
     }
 
     /** Converts this float array to a Vec2 array, with pairs used for coordinates.*/
@@ -379,6 +386,7 @@ public class FloatSeq{
         return array;
     }
 
+    @Override
     public int hashCode(){
         if(!ordered) return super.hashCode();
         float[] items = this.items;
@@ -388,6 +396,7 @@ public class FloatSeq{
         return h;
     }
 
+    @Override
     public boolean equals(Object object){
         if(object == this) return true;
         if(!ordered) return false;
@@ -418,6 +427,7 @@ public class FloatSeq{
         return true;
     }
 
+    @Override
     public String toString(){
         if(size == 0) return "[]";
         float[] items = this.items;

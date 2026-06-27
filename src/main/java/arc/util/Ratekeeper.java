@@ -11,12 +11,13 @@ public class Ratekeeper{
      * @param cap the maximum amount of actions per chunk
      * */
     public boolean allow(long spacing, int cap){
-        if(Time.timeSinceMillis(lastTime) > spacing){
+        long now = Time.nanosMillis();
+        if(Time.nanosMillis() - lastTime > spacing){
             occurences = 0;
-            lastTime = Time.millis();
+            lastTime = now;
         }
 
-        occurences ++;
+        occurences++;
         return occurences <= cap;
     }
 

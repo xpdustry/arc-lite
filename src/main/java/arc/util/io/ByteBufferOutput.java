@@ -18,6 +18,10 @@ public class ByteBufferOutput implements DataOutput{
     public ByteBufferOutput(){
     }
 
+    public void setBuffer(ByteBuffer buffer){
+        this.buffer = buffer;
+    }
+
     /** This only write a byte. */
     @Override
     public void write(int i){

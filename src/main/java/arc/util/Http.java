@@ -128,7 +128,7 @@ public class Http{
                 return connection.getErrorStream();
             }
         }
-        
+
         public HttpURLConnection getConnection(){
             return connection;
         }
@@ -286,11 +286,9 @@ public class Http{
                             try(OutputStreamWriter writer = new OutputStreamWriter(connection.getOutputStream(), Strings.utf8)){
                                 writer.write(content);
                             }
-                        }else{
-                            if(contentStream != null){
-                                try(OutputStream os = connection.getOutputStream()){
-                                    Streams.copy(contentStream, os);
-                                }
+                        }else if(contentStream != null){
+                            try(OutputStream os = connection.getOutputStream()){
+                                Streams.copy(contentStream, os);
                             }
                         }
                     }
@@ -342,7 +340,7 @@ public class Http{
         GET, POST, PUT, DELETE, HEAD, CONNECT, OPTIONS, TRACE
     }
 
-    /** 
+    /**
      * Defines the status of an HTTP request. <br>
      * Codes from: https://en.wikipedia.org/wiki/List_of_HTTP_status_codes
      */
@@ -413,7 +411,7 @@ public class Http{
         // Nginx
         REQUEST_HEADER_TOO_LARGE(494),
         SSL_CERTIFICATE_ERROR(495),      // These are ambiguous with 525 and 526
-        SSL_CERTIFICATE_REQUESTED(596),  // 
+        SSL_CERTIFICATE_REQUESTED(596),  //
         HTTP_REQUEST_SENT_TO_HTTPS_PORT(597),
         CLIENT_CLOSED_REQUEST(499),
 

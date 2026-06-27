@@ -1,5 +1,6 @@
 package arc.struct;
 
+import arc.func.Shortc;
 import arc.math.Mathf;
 
 import java.util.Arrays;
@@ -69,6 +70,12 @@ public class ShortSeq{
     /** @see #ShortSeq(short[]) */
     public static ShortSeq with(short... array){
         return new ShortSeq(array);
+    }
+
+    public void each(Shortc consumer){
+        for(int i = 0; i < size; i++){
+            consumer.get(items[i]);
+        }
     }
 
     /** Casts the specified value to short and adds it. */
@@ -368,6 +375,7 @@ public class ShortSeq{
         return array;
     }
 
+    @Override
     public int hashCode(){
         if(!ordered) return super.hashCode();
         short[] items = this.items;
@@ -377,6 +385,7 @@ public class ShortSeq{
         return h;
     }
 
+    @Override
     public boolean equals(Object object){
         if(object == this) return true;
         if(!ordered) return false;
@@ -392,6 +401,7 @@ public class ShortSeq{
         return true;
     }
 
+    @Override
     public String toString(){
         if(size == 0) return "[]";
         short[] items = this.items;

@@ -28,7 +28,6 @@ public class SnapshotSeq<T> extends Seq<T>{
     private int snapshots;
 
     public SnapshotSeq(){
-        super();
     }
 
     public SnapshotSeq(Seq<T> array){
@@ -96,77 +95,92 @@ public class SnapshotSeq<T> extends Seq<T>{
             resize(items.length);
     }
 
+    @Override
     public void set(int index, T value){
         modified();
         super.set(index, value);
     }
 
+    @Override
     public void insert(int index, T value){
         modified();
         super.insert(index, value);
     }
 
+    @Override
     public void swap(int first, int second){
         modified();
         super.swap(first, second);
     }
 
+    @Override
     public boolean remove(T value, boolean identity){
         modified();
         return super.remove(value, identity);
     }
 
+    @Override
     public T remove(int index){
         modified();
         return super.remove(index);
     }
 
+    @Override
     public void removeRange(int start, int end){
         modified();
         super.removeRange(start, end);
     }
 
+    @Override
     public boolean removeAll(Seq<? extends T> array, boolean identity){
         modified();
         return super.removeAll(array, identity);
     }
 
+    @Override
     public T pop(){
         modified();
         return super.pop();
     }
 
+    @Override
     public Seq<T> clear(){
         modified();
         super.clear();
         return this;
     }
 
+    @Override
     public Seq<T> sort(){
         modified();
         return super.sort();
     }
 
+    @Override
     public Seq<T> sort(Comparator<? super T> comparator){
         modified();
         return super.sort(comparator);
     }
 
+    @Override
     public Seq<T> reverse(){
         modified();
         return super.reverse();
     }
 
+    @Override
     public Seq<T> shuffle(){
         modified();
         return super.shuffle();
     }
 
+    @Override
     public void truncate(int newSize){
         modified();
         super.truncate(newSize);
     }
 
+    @Override
     public T[] setSize(int newSize){
         modified();
         return super.setSize(newSize);
