@@ -2,7 +2,6 @@ package arc.net;
 
 import arc.math.*;
 import arc.net.FrameworkMessage.*;
-import arc.net.Server.DiscoveryReceiver.*;
 import arc.struct.*;
 import arc.util.*;
 
@@ -273,6 +272,13 @@ public class Server implements EndPoint{
                                 Connection connection = pendingConnections.remove(fromConnectionID);
                                 if(connection != null){
                                     if(connection.udpRemoteAddress != null) continue;
+                                    // It is illegal to register an UDP connection without the same address as the TCP one
+                                    InetSocketAddress toAddress = connection.getRemoteAddressTCP();
+                                    if(toAddress == null || !fromAddress.getAddress().equals(toAddress.getAddress())){
+                                        pendingConnections.put(fromConnectionID, connection); // replace, in case of
+                                        selectionKey.channel().close();
+                                        continue;
+                                    }
                                     connection.udpRemoteAddress = fromAddress;
                                     addConnection(connection);
                                     connection.sendTCP(new RegisterUDP());
@@ -404,21 +410,16 @@ public class Server implements EndPoint{
     }
 
     protected void addConnection(Connection connection){
-        Connection[] newConnections = new Connection[connections.length + 1];
-        newConnections[0] = connection;
-        System.arraycopy(connections, 0, newConnections, 1, connections.length);
-        connections = newConnections;
-
+        //Why connections are added at top of list by default?
+        //connections = Structs.add(connections, connection);
+        connections = Structs.insert(connections, 0, connection);
         if(connection.udpRemoteAddress != null){
             udpAddressToConnection.put(connection.udpRemoteAddress, connection);
         }
     }
 
     protected void removeConnection(Connection connection){
-        ArrayList<Connection> temp = new ArrayList<>(Arrays.asList(connections));
-        temp.remove(connection);
-        connections = temp.toArray(new Connection[0]);
-
+        connections = Structs.remove(connections, connection);
         pendingConnections.remove(connection.id);
         if(connection.udpRemoteAddress != null){
             udpAddressToConnection.remove(connection.udpRemoteAddress);

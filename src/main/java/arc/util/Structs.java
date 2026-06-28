@@ -184,8 +184,8 @@ public class Structs{
 
         T[] next = Reflect.newArray(array, array.length - 1);
         System.arraycopy(array, 0, next, 0, index);
-        if(index < array.length - 1){
-            System.arraycopy(array, index + 1, next, index, array.length - 1 - index);
+        if(index < next.length){
+            System.arraycopy(array, index + 1, next, index, next.length - index);
         }
 
         return next;
