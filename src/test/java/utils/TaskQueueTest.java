@@ -2,11 +2,11 @@ package utils;
 
 import arc.math.Rand;
 import arc.util.TaskQueue;
+import arc.util.Time;
 
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.*;
-import java.util.concurrent.locks.LockSupport;
 
 import org.junit.Test;
 
@@ -15,6 +15,12 @@ import static org.junit.Assert.*;
 
 public class TaskQueueTest extends TaskQueue{
     { TaskQueue.CHUNK = 8; }
+
+    /** Needed because windows clock resolution is above the millisecond. */
+    public static void busyWait(long nanos) {
+        long start = Time.nanos();
+        while (Time.timeSinceNanos(start) < nanos);
+    }
 
     @Test
     public void fifoAndCount(){
@@ -82,7 +88,7 @@ public class TaskQueueTest extends TaskQueue{
 
     @Test(timeout = 60_000)
     public void concurrent() throws Exception{
-        final int producers = 8, perProducer = 20_000, total = producers * perProducer;
+        final int producers = 8, perProducer = 100_000, total = producers * perProducer;
         TaskQueue q = new TaskQueue();
 
         AtomicInteger executed = new AtomicInteger();
@@ -106,8 +112,7 @@ public class TaskQueueTest extends TaskQueue{
                     final int seq = s, idx = pid * perProducer + s;
                     q.post(() -> { // runs on the consumer thread
                         // simulate processing
-                        if (rand.chance(0.05d))
-                            LockSupport.parkNanos(rand.nextLong(100_000));
+                        busyWait(rand.nextLong(10_000));
 
                         if(seq <= lastSeq.get(pid)) order.set(true); // per-producer FIFO
                         lastSeq.set(pid, seq);

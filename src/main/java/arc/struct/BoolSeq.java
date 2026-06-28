@@ -2,8 +2,9 @@ package arc.struct;
 
 import arc.func.Boolc;
 import arc.math.Mathf;
+import arc.util.ArcRuntimeException;
 
-import java.util.BitSet;
+import java.util.*;
 
 /**
  * A resizable, ordered or unordered boolean array. Avoids the boxing that occurs with ArrayList<Boolean>. It is less memory
@@ -12,10 +13,12 @@ import java.util.BitSet;
  * removing elements (the last element is moved to the removed element's position).
  * @author Nathan Sweet
  */
-public class BoolSeq{
+public class BoolSeq implements Iterable<Boolean>{
     public boolean[] items;
     public int size;
     public boolean ordered;
+
+    private BoolSeqIterator iterator1, iterator2;
 
     /** Creates an ordered array with a capacity of 16. */
     public BoolSeq(){
@@ -374,5 +377,69 @@ public class BoolSeq{
             buffer.append(items[i]);
         }
         return buffer.toString();
+    }
+
+    /**
+     * Returns an iterator for the items in this sequence. Remove is supported. Note that the same iterator instance is returned
+     * each time this method is called. Use the {@link BoolSeqIterator} constructor for nested or multithreaded iteration.
+     */
+    @Override
+    public BoolSeqIterator iterator(){
+        if(iterator1 == null){
+            iterator1 = new BoolSeqIterator(this);
+            iterator2 = new BoolSeqIterator(this);
+        }
+        if(!iterator1.valid){
+            iterator1.reset();
+            iterator1.valid = true;
+            iterator2.valid = false;
+            return iterator1;
+        }
+        iterator2.reset();
+        iterator2.valid = true;
+        iterator1.valid = false;
+        return iterator2;
+    }
+
+    public static class BoolSeqIterator implements Iterable<Boolean>, Iterator<Boolean>{
+        private final BoolSeq seq;
+        int index;
+        boolean valid = true;
+
+        public BoolSeqIterator(BoolSeq seq){
+            this.seq = seq;
+        }
+
+        public void reset(){
+            index = 0;
+        }
+
+        @Override
+        public boolean hasNext(){
+            if(!valid) throw new ArcRuntimeException("#iterator() cannot be used nested.");
+            return index < seq.size;
+        }
+
+        @Override
+        public Boolean next(){
+            return nextBool();
+        }
+
+        public boolean nextBool(){
+            if(index >= seq.size) throw new NoSuchElementException(String.valueOf(index));
+            if(!valid) throw new ArcRuntimeException("#iterator() cannot be used nested.");
+            return seq.items[index++];
+        }
+
+        @Override
+        public void remove(){
+            index--;
+            seq.removeIndex(index);
+        }
+
+        @Override
+        public Iterator<Boolean> iterator(){
+            return this;
+        }
     }
 }

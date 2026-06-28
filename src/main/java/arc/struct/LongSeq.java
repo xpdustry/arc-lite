@@ -2,18 +2,23 @@ package arc.struct;
 
 import arc.func.Longc;
 import arc.math.Mathf;
+import arc.util.ArcRuntimeException;
 
 import java.util.Arrays;
+import java.util.Iterator;
+import java.util.NoSuchElementException;
 
 /**
  * A resizable, ordered or unordered long array. Avoids the boxing that occurs with ArrayList<Long>. If unordered, this class
  * avoids a memory copy when removing elements (the last element is moved to the removed element's position).
  * @author Nathan Sweet
  */
-public class LongSeq{
+public class LongSeq implements Iterable<Long>{
     public long[] items;
     public int size;
     public boolean ordered;
+
+    private LongSeqIterator iterator1, iterator2;
 
     /** Creates an ordered array with a capacity of 16. */
     public LongSeq(){
@@ -419,5 +424,69 @@ public class LongSeq{
             buffer.append(items[i]);
         }
         return buffer.toString();
+    }
+
+    /**
+     * Returns an iterator for the items in this sequence. Remove is supported. Note that the same iterator instance is returned
+     * each time this method is called. Use the {@link LongSeqIterator} constructor for nested or multithreaded iteration.
+     */
+    @Override
+    public LongSeqIterator iterator(){
+        if(iterator1 == null){
+            iterator1 = new LongSeqIterator(this);
+            iterator2 = new LongSeqIterator(this);
+        }
+        if(!iterator1.valid){
+            iterator1.reset();
+            iterator1.valid = true;
+            iterator2.valid = false;
+            return iterator1;
+        }
+        iterator2.reset();
+        iterator2.valid = true;
+        iterator1.valid = false;
+        return iterator2;
+    }
+
+    public static class LongSeqIterator implements Iterable<Long>, Iterator<Long>{
+        private final LongSeq seq;
+        int index;
+        boolean valid = true;
+
+        public LongSeqIterator(LongSeq seq){
+            this.seq = seq;
+        }
+
+        public void reset(){
+            index = 0;
+        }
+
+        @Override
+        public boolean hasNext(){
+            if(!valid) throw new ArcRuntimeException("#iterator() cannot be used nested.");
+            return index < seq.size;
+        }
+
+        @Override
+        public Long next(){
+            return nextLong();
+        }
+
+        public long nextLong(){
+            if(index >= seq.size) throw new NoSuchElementException(String.valueOf(index));
+            if(!valid) throw new ArcRuntimeException("#iterator() cannot be used nested.");
+            return seq.items[index++];
+        }
+
+        @Override
+        public void remove(){
+            index--;
+            seq.removeIndex(index);
+        }
+
+        @Override
+        public Iterator<Long> iterator(){
+            return this;
+        }
     }
 }

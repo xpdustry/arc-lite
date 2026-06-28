@@ -2,6 +2,7 @@ package arc.struct;
 
 import arc.func.*;
 import arc.math.*;
+import arc.util.ArcRuntimeException;
 
 import java.util.*;
 
@@ -10,10 +11,12 @@ import java.util.*;
  * avoids a memory copy when removing elements (the last element is moved to the removed element's position).
  * @author Nathan Sweet
  */
-public class IntSeq{
+public class IntSeq implements Iterable<Integer>{
     public int[] items;
     public int size;
     public boolean ordered;
+
+    private IntSeqIterator iterator1, iterator2;
 
     public static IntSeq range(int min, int max){
         IntSeq out = new IntSeq();
@@ -489,5 +492,69 @@ public class IntSeq{
             buffer.append(items[i]);
         }
         return buffer.toString();
+    }
+
+    /**
+     * Returns an iterator for the items in this sequence. Remove is supported. Note that the same iterator instance is returned
+     * each time this method is called. Use the {@link IntSeqIterator} constructor for nested or multithreaded iteration.
+     */
+    @Override
+    public IntSeqIterator iterator(){
+        if(iterator1 == null){
+            iterator1 = new IntSeqIterator(this);
+            iterator2 = new IntSeqIterator(this);
+        }
+        if(!iterator1.valid){
+            iterator1.reset();
+            iterator1.valid = true;
+            iterator2.valid = false;
+            return iterator1;
+        }
+        iterator2.reset();
+        iterator2.valid = true;
+        iterator1.valid = false;
+        return iterator2;
+    }
+
+    public static class IntSeqIterator implements Iterable<Integer>, Iterator<Integer>{
+        private final IntSeq seq;
+        int index;
+        boolean valid = true;
+
+        public IntSeqIterator(IntSeq seq){
+            this.seq = seq;
+        }
+
+        public void reset(){
+            index = 0;
+        }
+
+        @Override
+        public boolean hasNext(){
+            if(!valid) throw new ArcRuntimeException("#iterator() cannot be used nested.");
+            return index < seq.size;
+        }
+
+        @Override
+        public Integer next(){
+            return nextInt();
+        }
+
+        public int nextInt(){
+            if(index >= seq.size) throw new NoSuchElementException(String.valueOf(index));
+            if(!valid) throw new ArcRuntimeException("#iterator() cannot be used nested.");
+            return seq.items[index++];
+        }
+
+        @Override
+        public void remove(){
+            index--;
+            seq.removeIndex(index);
+        }
+
+        @Override
+        public Iterator<Integer> iterator(){
+            return this;
+        }
     }
 }

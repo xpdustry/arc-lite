@@ -2,18 +2,23 @@ package arc.struct;
 
 import arc.func.Shortc;
 import arc.math.Mathf;
+import arc.util.ArcRuntimeException;
 
 import java.util.Arrays;
+import java.util.Iterator;
+import java.util.NoSuchElementException;
 
 /**
  * A resizable, ordered or unordered short array. Avoids the boxing that occurs with ArrayList<Short>. If unordered, this class
  * avoids a memory copy when removing elements (the last element is moved to the removed element's position).
  * @author Nathan Sweet
  */
-public class ShortSeq{
+public class ShortSeq implements Iterable<Short>{
     public short[] items;
     public int size;
     public boolean ordered;
+
+    private ShortSeqIterator iterator1, iterator2;
 
     /** Creates an ordered array with a capacity of 16. */
     public ShortSeq(){
@@ -426,5 +431,69 @@ public class ShortSeq{
             buffer.append(items[i]);
         }
         return buffer.toString();
+    }
+
+    /**
+     * Returns an iterator for the items in this sequence. Remove is supported. Note that the same iterator instance is returned
+     * each time this method is called. Use the {@link ShortSeqIterator} constructor for nested or multithreaded iteration.
+     */
+    @Override
+    public ShortSeqIterator iterator(){
+        if(iterator1 == null){
+            iterator1 = new ShortSeqIterator(this);
+            iterator2 = new ShortSeqIterator(this);
+        }
+        if(!iterator1.valid){
+            iterator1.reset();
+            iterator1.valid = true;
+            iterator2.valid = false;
+            return iterator1;
+        }
+        iterator2.reset();
+        iterator2.valid = true;
+        iterator1.valid = false;
+        return iterator2;
+    }
+
+    public static class ShortSeqIterator implements Iterable<Short>, Iterator<Short>{
+        private final ShortSeq seq;
+        int index;
+        boolean valid = true;
+
+        public ShortSeqIterator(ShortSeq seq){
+            this.seq = seq;
+        }
+
+        public void reset(){
+            index = 0;
+        }
+
+        @Override
+        public boolean hasNext(){
+            if(!valid) throw new ArcRuntimeException("#iterator() cannot be used nested.");
+            return index < seq.size;
+        }
+
+        @Override
+        public Short next(){
+            return nextShort();
+        }
+
+        public short nextShort(){
+            if(index >= seq.size) throw new NoSuchElementException(String.valueOf(index));
+            if(!valid) throw new ArcRuntimeException("#iterator() cannot be used nested.");
+            return seq.items[index++];
+        }
+
+        @Override
+        public void remove(){
+            index--;
+            seq.removeIndex(index);
+        }
+
+        @Override
+        public Iterator<Short> iterator(){
+            return this;
+        }
     }
 }

@@ -193,8 +193,10 @@ public class ObjectSet<T> implements Iterable<T>, Eachable<T>{
 
     public void addAll(T[] array, int offset, int length){
         ensureCapacity(length);
-        for(int i = offset, n = i + length; i < n; i++)
-            add(array[i]);
+        for(int i = offset, n = i + length; i < n; i++){
+            T value = array[i];
+            if(value != null) add(value);
+        }
     }
 
     public void addAll(ObjectSet<? extends T> set){
@@ -504,6 +506,7 @@ public class ObjectSet<T> implements Iterable<T>, Eachable<T>{
         return (h ^ h >>> hashShift) & mask;
     }
 
+    @Override
     public int hashCode(){
         int h = 0;
         for(int i = 0, n = capacity + stashSize; i < n; i++)
@@ -511,6 +514,7 @@ public class ObjectSet<T> implements Iterable<T>, Eachable<T>{
         return h;
     }
 
+    @Override
     public boolean equals(Object obj){
         if(!(obj instanceof ObjectSet)) return false;
         ObjectSet<T> other = (ObjectSet<T>)obj;
@@ -521,6 +525,7 @@ public class ObjectSet<T> implements Iterable<T>, Eachable<T>{
         return true;
     }
 
+    @Override
     public String toString(){
         return '{' + toString(", ") + '}';
     }

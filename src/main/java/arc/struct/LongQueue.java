@@ -1,11 +1,13 @@
 package arc.struct;
 
 import arc.func.Longc;
+import arc.util.ArcRuntimeException;
 
+import java.util.Iterator;
 import java.util.NoSuchElementException;
 
 /** Queue for longs. */
-public class LongQueue{
+public class LongQueue implements Iterable<Long>{
     /** Number of elements in the queue. */
     public int size = 0;
     /** Contains the values in the queue. Head and tail indices go in a circle around this array, wrapping at the end. */
@@ -17,6 +19,8 @@ public class LongQueue{
      * (size == values.length).
      */
     protected int tail = 0;
+
+    private LongQueueIterator iterator1, iterator2;
 
     /** Creates a new Queue which can hold 16 values without needing to resize backing array. */
     public LongQueue(){
@@ -36,7 +40,12 @@ public class LongQueue{
     }
 
     public void each(Longc consumer){
-        for(int i = 0; i < size; i++){
+        final long[] values = this.values;
+        for(int index = 0; index < size; index++){
+            int i = head + index;
+            if(i >= values.length){
+                i -= values.length;
+            }
             consumer.get(values[i]);
         }
     }
@@ -386,5 +395,69 @@ public class LongQueue{
         }
         sb.append(']');
         return sb.toString();
+    }
+
+    /**
+     * Returns an iterator for the items in this queue. Remove is supported. Note that the same iterator instance is returned each
+     * time this method is called. Use the {@link LongQueueIterator} constructor for nested or multithreaded iteration.
+     */
+    @Override
+    public LongQueueIterator iterator(){
+        if(iterator1 == null){
+            iterator1 = new LongQueueIterator(this);
+            iterator2 = new LongQueueIterator(this);
+        }
+        if(!iterator1.valid){
+            iterator1.reset();
+            iterator1.valid = true;
+            iterator2.valid = false;
+            return iterator1;
+        }
+        iterator2.reset();
+        iterator2.valid = true;
+        iterator1.valid = false;
+        return iterator2;
+    }
+
+    public static class LongQueueIterator implements Iterable<Long>, Iterator<Long>{
+        private final LongQueue queue;
+        int index;
+        boolean valid = true;
+
+        public LongQueueIterator(LongQueue queue){
+            this.queue = queue;
+        }
+
+        public void reset(){
+            index = 0;
+        }
+
+        @Override
+        public boolean hasNext(){
+            if(!valid) throw new ArcRuntimeException("#iterator() cannot be used nested.");
+            return index < queue.size;
+        }
+
+        @Override
+        public Long next(){
+            return nextLong();
+        }
+
+        public long nextLong(){
+            if(index >= queue.size) throw new NoSuchElementException(String.valueOf(index));
+            if(!valid) throw new ArcRuntimeException("#iterator() cannot be used nested.");
+            return queue.get(index++);
+        }
+
+        @Override
+        public void remove(){
+            index--;
+            queue.removeIndex(index);
+        }
+
+        @Override
+        public Iterator<Long> iterator(){
+            return this;
+        }
     }
 }

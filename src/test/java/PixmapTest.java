@@ -50,7 +50,6 @@ public class PixmapTest{
 
     @Test
     public void testPixmapDraw(){
-        ArcNativesLoader.load();
         Pixmap src = new Pixmap(500, 500);
         Pixmap dst = src.copy();
 

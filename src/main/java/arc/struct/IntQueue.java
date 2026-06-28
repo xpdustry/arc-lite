@@ -1,11 +1,12 @@
 package arc.struct;
 
 import arc.func.*;
+import arc.util.ArcRuntimeException;
 
-import java.util.NoSuchElementException;
+import java.util.*;
 
 /** Queue for ints. */
-public class IntQueue{
+public class IntQueue implements Iterable<Integer>{
     /** Number of elements in the queue. */
     public int size = 0;
     /** Contains the values in the queue. Head and tail indices go in a circle around this array, wrapping at the end. */
@@ -18,6 +19,8 @@ public class IntQueue{
      */
     protected int tail = 0;
 
+    private IntQueueIterator iterator1, iterator2;
+
     /** Creates a new Queue which can hold 16 values without needing to resize backing array. */
     public IntQueue(){
         this(16);
@@ -29,7 +32,12 @@ public class IntQueue{
     }
 
     public void each(Intc consumer){
-        for(int i = 0; i < size; i++){
+        final int[] values = this.values;
+        for(int index = 0; index < size; index++){
+            int i = head + index;
+            if(i >= values.length){
+                i -= values.length;
+            }
             consumer.get(values[i]);
         }
     }
@@ -369,5 +377,69 @@ public class IntQueue{
         }
         sb.append(']');
         return sb.toString();
+    }
+
+    /**
+     * Returns an iterator for the items in this queue. Remove is supported. Note that the same iterator instance is returned each
+     * time this method is called. Use the {@link IntQueueIterator} constructor for nested or multithreaded iteration.
+     */
+    @Override
+    public IntQueueIterator iterator(){
+        if(iterator1 == null){
+            iterator1 = new IntQueueIterator(this);
+            iterator2 = new IntQueueIterator(this);
+        }
+        if(!iterator1.valid){
+            iterator1.reset();
+            iterator1.valid = true;
+            iterator2.valid = false;
+            return iterator1;
+        }
+        iterator2.reset();
+        iterator2.valid = true;
+        iterator1.valid = false;
+        return iterator2;
+    }
+
+    public static class IntQueueIterator implements Iterable<Integer>, Iterator<Integer>{
+        private final IntQueue queue;
+        int index;
+        boolean valid = true;
+
+        public IntQueueIterator(IntQueue queue){
+            this.queue = queue;
+        }
+
+        public void reset(){
+            index = 0;
+        }
+
+        @Override
+        public boolean hasNext(){
+            if(!valid) throw new ArcRuntimeException("#iterator() cannot be used nested.");
+            return index < queue.size;
+        }
+
+        @Override
+        public Integer next(){
+            return nextInt();
+        }
+
+        public int nextInt(){
+            if(index >= queue.size) throw new NoSuchElementException(String.valueOf(index));
+            if(!valid) throw new ArcRuntimeException("#iterator() cannot be used nested.");
+            return queue.get(index++);
+        }
+
+        @Override
+        public void remove(){
+            index--;
+            queue.removeIndex(index);
+        }
+
+        @Override
+        public Iterator<Integer> iterator(){
+            return this;
+        }
     }
 }
