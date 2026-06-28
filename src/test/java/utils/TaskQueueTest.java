@@ -17,9 +17,10 @@ public class TaskQueueTest extends TaskQueue{
     { TaskQueue.CHUNK = 8; }
 
     /** Needed because windows clock resolution is above the millisecond. */
-    public static void busyWait(long nanos) {
+    public static void busyWait(long nanos){
+        if(nanos <= 0) return;
         long start = Time.nanos();
-        while (Time.timeSinceNanos(start) < nanos);
+        while(Time.timeSinceNanos(start) < nanos);
     }
 
     @Test

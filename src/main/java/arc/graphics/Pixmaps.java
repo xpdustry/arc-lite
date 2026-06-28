@@ -122,7 +122,7 @@ public class Pixmaps{
         for(int y = 0; y < pixmap.height; y++){
             for(int x = 0; x < pixmap.width; x++){
                 if(input.empty(x, y) &&
-                ((!input.empty(x, y + 1) && y < pixmap.height - 1) || (!input.empty(x, y - 1) && y > 0) || (!input.empty(x - 1, y) && x > 0) || (!input.empty(x + 1, y) && x < pixmap.width - 1)))
+                ((y < pixmap.height - 1 && !input.empty(x, y + 1)) || (y > 0 && !input.empty(x, y - 1)) || (x > 0 && !input.empty(x - 1, y)) || (x < pixmap.width - 1 && !input.empty(x + 1, y))))
                     pixmap.set(x, y, col);
             }
         }
@@ -167,7 +167,7 @@ public class Pixmaps{
 
         for(int y = 0; y < input.height; y++){
             for(int x = 0; x < input.width; x++){
-                vector.set(x - input.width / 2f + 0.5f, y - input.height / 2f);
+                vector.set(x - input.width / 2f + 0.5f, y - input.height / 2f + 0.5f);
                 vector.rotate(-angle);
                 int px = (int)(vector.x + input.width / 2f + 0.01f);
                 int py = (int)(vector.y + input.height / 2f + 0.01f);

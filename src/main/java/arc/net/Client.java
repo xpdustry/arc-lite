@@ -60,7 +60,6 @@ public class Client extends Connection implements EndPoint{
      * largest object that will be sent or received.
      */
     public Client(int writeBufferSize, int objectBufferSize, NetSerializer serialization){
-        super();
         endPoint = this;
 
         this.serialization = serialization;
@@ -407,7 +406,7 @@ public class Client extends Connection implements EndPoint{
 
     private void broadcast(int udpPort, DatagramSocket socket) throws IOException{
         ByteBuffer dataBuffer = ByteBuffer.allocate(64);
-        serialization.write(dataBuffer, new DiscoverHost());
+        serialization.write(dataBuffer, FrameworkMessage.discoverHost);
         dataBuffer.flip();
         byte[] data = new byte[dataBuffer.limit()];
         dataBuffer.get(data);

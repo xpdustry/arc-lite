@@ -233,7 +233,7 @@ public final class PropertiesUtils{
      * @throws NullPointerException if <code>writer</code> is null.
      */
     public static void store(ObjectMap<String, String> properties, Writer writer, String comment, boolean date) throws IOException{
-        storeImpl(properties, writer, comment, false, date);
+        storeImpl(properties, writer, comment, date, false);
     }
 
     public static void store(ObjectMap<String, String> properties, Writer writer, String comment) throws IOException{

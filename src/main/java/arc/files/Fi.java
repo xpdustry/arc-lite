@@ -366,7 +366,7 @@ public class Fi implements Comparable<Fi>{
         }finally{
             Streams.close(input);
         }
-        return position - offset;
+        return position;
     }
 
     /**

@@ -34,7 +34,7 @@ public class Structs{
         T[] temp = Reflect.newArray(array, array.length);
         int i = 0;
         for(T t : array){
-            if(removal.get(t)) temp[i++] = t;
+            if(!removal.get(t)) temp[i++] = t;
         }
         if(i == array.length) return temp;
         T[] next = Reflect.newArray(array, i);
@@ -266,7 +266,7 @@ public class Structs{
     public static <T> T findMin(T[] arr, Comparator<T> comp){
         T result = null;
         for(T t : arr){
-            if(result == null || comp.compare(result, t) < 0){
+            if(result == null || comp.compare(result, t) > 0){
                 result = t;
             }
         }
@@ -289,7 +289,7 @@ public class Structs{
     public static <T> T findMin(Iterable<T> arr, Comparator<T> comp){
         T result = null;
         for(T t : arr){
-            if(result == null || comp.compare(result, t) < 0){
+            if(result == null || comp.compare(result, t) > 0){
                 result = t;
             }
         }
@@ -299,7 +299,7 @@ public class Structs{
     public static <T> T findMin(Iterable<T> arr, Boolf<T> allow, Comparator<T> comp){
         T result = null;
         for(T t : arr){
-            if(allow.get(t) && (result == null || comp.compare(result, t) < 0)){
+            if(allow.get(t) && (result == null || comp.compare(result, t) > 0)){
                 result = t;
             }
         }
