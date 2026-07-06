@@ -75,9 +75,12 @@ public class ArrayMap<K, V> implements Iterable<ObjectMap.Entry<K, V>>{
         System.arraycopy(array.keys, 0, keys, 0, size);
         System.arraycopy(array.values, 0, values, 0, size);
     }
-    
+
     /**Iterates through key/value pairs.*/
     public void each(Cons2<K, V> cons){
+        int size = this.size;
+        K[] keys = this.keys;
+        V[] values = this.values;
         for(int i = 0; i < size; i++){
             cons.get(keys[i], values[i]);
         }
@@ -415,6 +418,7 @@ public class ArrayMap<K, V> implements Iterable<ObjectMap.Entry<K, V>>{
         size = newSize;
     }
 
+    @Override
     public int hashCode(){
         K[] keys = this.keys;
         V[] values = this.values;
@@ -428,6 +432,7 @@ public class ArrayMap<K, V> implements Iterable<ObjectMap.Entry<K, V>>{
         return h;
     }
 
+    @Override
     public boolean equals(Object obj){
         if(obj == this) return true;
         if(!(obj instanceof ArrayMap)) return false;
@@ -440,13 +445,12 @@ public class ArrayMap<K, V> implements Iterable<ObjectMap.Entry<K, V>>{
             V value = values[i];
             if(value == null){
                 if(!other.containsKey(key) || other.get(key) != null) return false;
-            }else{
-                if(!value.equals(other.get(key))) return false;
-            }
+            }else if(!value.equals(other.get(key))) return false;
         }
         return true;
     }
 
+    @Override
     public String toString(){
         if(size == 0) return "{}";
         K[] keys = this.keys;

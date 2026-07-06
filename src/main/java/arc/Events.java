@@ -21,12 +21,14 @@ public class Events{
 
     /** Only use this method if you have the reference to the exact listener object that was used. */
     public static <T> boolean remove(Class<T> type, Cons<T> listener){
-        return events.get(type, () -> new SnapshotSeq<>(Cons.class)).remove(listener);
+        SnapshotSeq<Cons<?>> listeners = events.get(type);
+        return listeners == null ? false : listeners.remove(listener);
     }
 
     /** Fires an enum trigger. */
     @SuppressWarnings("rawtypes")
     public static <T extends Enum<T>> void fire(Enum<T> type){
+        if(events.isEmpty()) return; // fast path when events are not used
         SnapshotSeq<Cons<?>> listeners = events.get(type);
         if(listeners == null) return;
         Cons[] items = listeners.begin();
@@ -45,6 +47,7 @@ public class Events{
 
     @SuppressWarnings("rawtypes")
     public static <T> void fire(Class<?> ctype, T type){
+        if(events.isEmpty()) return; // fast path when events are not used
         SnapshotSeq<Cons<?>> listeners = events.get(ctype);
         if(listeners == null) return;
         Cons[] items = listeners.begin();

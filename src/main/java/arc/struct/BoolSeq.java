@@ -78,6 +78,8 @@ public class BoolSeq implements Iterable<Boolean>{
     }
 
     public void each(Boolc consumer){
+        int size = this.size;
+        boolean[] items = this.items;
         for(int i = 0; i < size; i++){
             consumer.get(items[i]);
         }

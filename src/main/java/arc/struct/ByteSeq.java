@@ -76,6 +76,8 @@ public class ByteSeq implements Iterable<Byte>{
     }
 
     public void each(Bytec consumer){
+        int size = this.size;
+        byte[] items = this.items;
         for(int i = 0; i < size; i++){
             consumer.get(items[i]);
         }

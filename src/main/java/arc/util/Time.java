@@ -150,8 +150,19 @@ public class Time{
      * Get the time in nanos passed since a previous time
      * @param prevTime must be nanoseconds
      * @return time passed since prevTime in nanoseconds
+     * @deprecated use {@link #sinceNanos(long)} instead.
      */
+    @Deprecated
     public static long timeSinceNanos(long prevTime){
+        return sinceNanos(prevTime);
+    }
+
+    /**
+     * Get the time in nanos passed since a previous time
+     * @param prevTime must be nanoseconds
+     * @return time passed since prevTime in nanoseconds
+     */
+    public static long sinceNanos(long prevTime){
         return nanos() - prevTime;
     }
 
@@ -168,8 +179,19 @@ public class Time{
      * Get the time in millis passed since a previous time
      * @param prevTime must be milliseconds
      * @return time passed since prevTime in milliseconds
+     * @deprecated use {@link #sinceMillis(long)} instead.
      */
+    @Deprecated
     public static long timeSinceMillis(long prevTime){
+        return sinceMillis(prevTime);
+    }
+
+    /**
+     * Get the time in millis passed since a previous time
+     * @param prevTime must be milliseconds
+     * @return time passed since prevTime in milliseconds
+     */
+    public static long sinceMillis(long prevTime){
         return millis() - prevTime;
     }
 

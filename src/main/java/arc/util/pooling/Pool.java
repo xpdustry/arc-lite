@@ -1,63 +1,91 @@
 package arc.util.pooling;
 
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReferenceArray;
+
 import arc.struct.Seq;
 
 /**
  * A pool of objects that can be reused to avoid allocation.
+ * The implementation is thread-safe, lock-less, and pool array is preallocated.
  * @author Nathan Sweet
  * @see Pools
  */
 abstract public class Pool<T>{
-    /** The maximum number of objects that will be pooled. */
-    public final int max;
-    private final Seq<T> freeObjects;
+    /** The maximum number of objects that can be pooled. */
+    public final int capacity;
+    private final AtomicReferenceArray<T> pool;
+    private final AtomicInteger head, tail;
     /** The highest number of free objects. Can be reset any time. */
-    public int peak;
+    public volatile int peak;
 
-    /** Creates a pool with an initial capacity of 16 and no maximum. */
+    /** Creates a pool with a maximum capacity of {@code 2048} objects. */
     public Pool(){
-        this(16, Integer.MAX_VALUE);
+        this(2048);
     }
 
-    /** Creates a pool with the specified initial capacity and no maximum. */
-    public Pool(int initialCapacity){
-        this(initialCapacity, Integer.MAX_VALUE);
-    }
-
-    /** @param max The maximum number of free objects to store in this pool. */
-    public Pool(int initialCapacity, int max){
-        freeObjects = new Seq<>(false, initialCapacity);
-        this.max = max;
+    /** @param capacity The maximum number of free objects to store in this pool. */
+    public Pool(int capacity){
+      this.capacity = capacity;
+      pool = new AtomicReferenceArray<>(capacity);
+      head = new AtomicInteger(0);
+      tail = new AtomicInteger(0);
     }
 
     abstract protected T newObject();
 
     /**
-     * Returns an object from this pool. The object may be new (from {@link #newObject()}) or reused (previously
-     * {@link #free(Object) freed}).
+     * Returns an object from this pool.
+     * The object may be new (from {@link #newObject()}) or
+     * reused (previously {@link #free(Object) freed}).
      */
-    public synchronized T obtain(){
-        return freeObjects.size == 0 ? newObject() : freeObjects.pop();
+    public T obtain(){
+        T o = poll();
+        return o == null ? newObject() : o;
+    }
+
+    /** Same as {@link #obtain()}, but returns {@code null} instead of allocating a new object if the pool is empty. */
+    public T poll(){
+        for(;;){
+            int h = head.get();
+            int t = tail.get();
+            if(h == t) return null; // Pool empty
+            T e = pool.get(h);
+            if(e != null && head.compareAndSet(h, (h + 1) % capacity)){
+                pool.set(h, null); // Help GC
+                return e;
+            }
+            // Lost CAS race or slot is in mid-writing, re-read
+        }
     }
 
     /**
-     * Puts the specified object in the pool, making it eligible to be returned by {@link #obtain()}. If the pool already contains
-     * {@link #max} free objects, the specified object is reset but not added to the pool.
+     * Puts the specified object in the pool, making it eligible to be returned by {@link #obtain()}.
+     * If the pool already contains {@link #max} free objects, the specified object is reset but not added to the pool.
      * <p>
      * The pool does not check if an object is already freed, so the same object must not be freed multiple times.
+     * @return {@code true} if the object has been placed to the pool array, else it means that the pool is full.
      */
-    public synchronized void free(T object){
+    public boolean free(T object){
         if(object == null) throw new IllegalArgumentException("object cannot be null.");
-        if(freeObjects.size < max){
-            freeObjects.add(object);
-            peak = Math.max(peak, freeObjects.size);
+        for(;;){
+            int t = tail.get();
+            int h = head.get();
+            int i = (t + 1) % capacity;
+            if(i == h) return false; // Pool full
+            if(tail.compareAndSet(t, i)){
+                peak = Math.max(peak, (t - h + capacity) % capacity);
+                reset(object);
+                pool.set(t, object);
+                return true;
+            }
+            // Lost CAS race, re-read
         }
-        reset(object);
     }
 
     /**
-     * Called when an object is freed to clear the state of the object for possible later reuse. The default implementation calls
-     * {@link Poolable#reset()} if the object is {@link Poolable}.
+     * Called when an object is freed to clear the state of the object for possible later reuse.
+     * The default implementation calls {@link Poolable#reset()} if the object is {@link Poolable}.
      */
     protected void reset(T object){
         if(object instanceof Poolable) ((Poolable)object).reset();
@@ -69,32 +97,51 @@ abstract public class Pool<T>{
      * The pool does not check if an object is already freed, so the same object must not be freed multiple times.
      * @see #free(Object)
      */
-    public synchronized void freeAll(Seq<T> objects){
+    public void freeAll(Seq<T> objects){
         if(objects == null) throw new IllegalArgumentException("objects cannot be null.");
-        Seq<T> freeObjects = this.freeObjects;
-        int max = this.max;
         for(int i = 0; i < objects.size; i++){
             T object = objects.get(i);
             if(object == null) continue;
-            if(freeObjects.size < max) freeObjects.add(object);
-            reset(object);
+            if(!free(object)) reset(object);
         }
-        peak = Math.max(peak, freeObjects.size);
+    }
+
+    /** Fill the pool with new objects. */
+    public void fill(){
+        fill(capacity);
+    }
+
+    /** Fill the pool with {@code size} new objects. */
+    public void fill(int size){
+        for(int i = 0; i < size; i++){
+            if(!free(newObject())) return;
+        }
     }
 
     /** Removes all free objects from this pool. */
-    public synchronized void clear(){
-        freeObjects.clear();
+    public void clear(){
+        while(poll() != null);
     }
 
-    /** The number of objects available to be obtained. */
-    public synchronized int getFree(){
-        return freeObjects.size;
+    /**
+     * The number of objects available to be obtained.
+     * This can be an estimation if pool is highly used.
+     */
+    public int getFree(){
+      return (tail.get() - head.get() + capacity) % capacity;
     }
 
     /** Objects implementing this interface will have {@link #reset()} called when passed to {@link Pool#free(Object)}. */
     public interface Poolable{
         /** Resets the object for reuse. Object references should be nulled and fields may be set to default values. */
         void reset();
+    }
+
+    /** Pool that may return {@code null} if no object is currently available. */
+    public static class NullablePool<T> extends Pool<T>{
+        @Override
+        protected T newObject(){
+            return null;
+        }
     }
 }

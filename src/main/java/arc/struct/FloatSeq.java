@@ -77,7 +77,7 @@ public class FloatSeq implements Iterable<Float>{
     }
 
     public void each(Floatc consumer){
-        for(int i = 0; i < size; i++){
+        for(int i = 0, n = size; i < n; i++){
             consumer.get(items[i]);
         }
     }

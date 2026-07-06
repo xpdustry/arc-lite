@@ -18,6 +18,28 @@ public class Structs{
         return array;
     }
 
+    @SafeVarargs
+    public static <T> Iterable<T> iterable(T... array){
+        return () -> new Iterator<T>(){
+            int index = 0;
+
+            public boolean hasNext(){
+                return index < array.length;
+            }
+
+            public T next(){
+                if(index >= array.length) throw new NoSuchElementException();
+                return array[index++];
+            }
+        };
+    }
+
+    public static <T, R> R[] map(T[] array, Class<R> type, Func<T, R> mapper){
+        R[] next = Reflect.newArray(type, array.length);
+        for(int i = 0; i < array.length; i++) next[i] = mapper.get(array[i]);
+        return next;
+    }
+
     /** Remove all values that match this predicate. */
     public static <T> void filter(Iterable<T> iterable, Boolf<T> removal){
         filter(iterable.iterator(), removal);
@@ -52,6 +74,63 @@ public class Structs{
         return out.toArray();
     }
 
+    public static <T> Iterable<T> selectView(T[] array, Boolf<T> predicate){
+        return () -> new Iterator<T>(){
+            int index, nextIndex = -1;
+
+            @Override
+            public boolean hasNext(){
+                if(nextIndex >= 0) return true;
+                while(index < array.length){
+                    if(predicate.get(array[index])){
+                        nextIndex = index++;
+                        return true;
+                    }
+                    index++;
+                }
+                return false;
+            }
+
+            @Override
+            public T next(){
+                if(!hasNext()) throw new NoSuchElementException();
+                T value = array[nextIndex];
+                nextIndex = -1;
+                return value;
+            }
+        };
+    }
+
+    public static <T> Iterable<T> selectView(Iterable<T> array, Boolf<T> predicate){
+        return () -> new Iterator<T>(){
+            final Iterator<T> it = array.iterator();
+            boolean ready;
+            T next;
+
+            @Override
+            public boolean hasNext(){
+                if(ready) return true;
+                while(it.hasNext()){
+                    T value = it.next();
+                    if(predicate.get(value)){
+                        next = value;
+                        return ready = true;
+                    }
+                }
+                return false;
+            }
+
+            @Override
+            public T next(){
+                if(!hasNext()) throw new NoSuchElementException();
+                ready = false;
+                T result = next;
+                next = null;
+                return result;
+            }
+        };
+    }
+
     @SafeVarargs
     public static <T> T random(T... array){
         if(array.length == 0) return null;
@@ -64,6 +143,14 @@ public class Structs{
         return array[rand.random(array.length - 1)];
     }
 
+    public static <T> int count(Iterable<T> array, Boolf<T> value){
+        int total = 0;
+        for(T t : array){
+            if(value.get(t)) total ++;
+        }
+        return total;
+    }
+
     public static <T> int count(T[] array, Boolf<T> value){
         int total = 0;
         for(T t : array){
@@ -72,10 +159,10 @@ public class Structs{
         return total;
     }
 
-    public static <T> int max(Iterable<T> list, Intf<T> intifier){
+    public static <T> int max(Iterable<T> array, Intf<T> intifier){
         boolean first = true;
         int index = 0;
-        for(T i : list){
+        for(T i : array){
             int s = intifier.get(i);
             if(first) index = s;
             else if(s > index) index = s;
@@ -84,10 +171,10 @@ public class Structs{
         return index;
     }
 
-    public static <T> int max(T[] list, Intf<T> intifier){
+    public static <T> int max(T[] array, Intf<T> intifier){
         boolean first = true;
         int index = 0;
-        for(T i : list){
+        for(T i : array){
             int s = intifier.get(i);
             if(first) index = s;
             else if(s > index) index = s;
@@ -96,10 +183,10 @@ public class Structs{
         return index;
     }
 
-    public static <T> int min(Iterable<T> list, Intf<T> intifier){
+    public static <T> int min(Iterable<T> array, Intf<T> intifier){
         boolean first = true;
         int index = 0;
-        for(T i : list){
+        for(T i : array){
             int s = intifier.get(i);
             if(first) index = s;
             else if(s < index) index = s;
@@ -108,10 +195,10 @@ public class Structs{
         return index;
     }
 
-    public static <T> int min(T[] list, Intf<T> intifier){
+    public static <T> int min(T[] array, Intf<T> intifier){
         boolean first = true;
         int index = 0;
-        for(T i : list){
+        for(T i : array){
             int s = intifier.get(i);
             if(first) index = s;
             else if(s < index) index = s;

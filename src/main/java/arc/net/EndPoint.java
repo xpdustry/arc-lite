@@ -4,15 +4,17 @@ package arc.net;
 
 import java.io.IOException;
 
+import arc.util.Disposable;
+
 /**
  * Represents the local end point of a connection.
  * @author Nathan Sweet <misc@n4te.com>
  */
-public interface EndPoint extends Runnable{
+public interface EndPoint extends Runnable, Disposable{
 
     /**
-     * Adds a listener to the endpoint. If the listener already exists, it is
-     * <i>not</i> added again.
+     * Adds a listener to the endpoint.
+     * If the listener already exists, it is <i>not</i> added again.
      */
     void addListener(NetListener listener);
 
@@ -33,6 +35,10 @@ public interface EndPoint extends Runnable{
      */
     void stop();
 
+    boolean isStopped();
+
+    boolean isStarting();
+
     /**
      * @see Client
      * @see Server
@@ -46,9 +52,10 @@ public interface EndPoint extends Runnable{
     void update(int timeout) throws IOException;
 
     /**
-     * Returns the last thread that called {@link #update(int)} for this end
-     * point. This can be useful to detect when long running code will be run on
-     * the update thread.
+     * Returns the last thread that called {@link #update(int)} for this end point.
+     * This can be useful to detect when long running code will be run on the update thread.
      */
     Thread getUpdateThread();
+
+    NetSerializer getSerialization();
 }

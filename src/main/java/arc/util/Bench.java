@@ -20,7 +20,7 @@ public class Bench{
 
     public static void end(){
         endi();
-        long total = Time.timeSinceMillis(totalStart);
+        long total = Time.sinceMillis(totalStart);
 
         times.each((name, time) -> {
             Log.info("[PERF] @: @ms (@%)", name, time, (int)((float)time / total * 100));
@@ -29,7 +29,7 @@ public class Bench{
     }
 
     private static void endi(){
-        times.put(lastName, Time.timeSinceMillis(last));
+        times.put(lastName, Time.sinceMillis(last));
         lastName = null;
     }
 }

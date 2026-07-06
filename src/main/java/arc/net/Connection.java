@@ -3,6 +3,8 @@
 package arc.net;
 
 import arc.net.FrameworkMessage.Ping;
+import arc.util.Disposable;
+import arc.util.Time;
 
 import java.io.IOException;
 import java.net.Socket;
@@ -10,13 +12,12 @@ import java.net.*;
 import java.nio.channels.SocketChannel;
 
 /**
- * Represents a TCP and optionally a UDP connection between a {@link Client} and
- * a {@link Server}. If either underlying connection is closed or errors, both
- * connections are closed.
+ * Represents a TCP and optionally a UDP connection between a {@link Client} and a {@link Server}.
+ * If either underlying connection is closed or errors, both connections are closed.
  * @author Nathan Sweet <misc@n4te.com>
  */
-public class Connection{
-    int id = -1;
+public class Connection implements Disposable{
+    int id;
     protected String name;
     EndPoint endPoint;
     TcpConnection tcp;
@@ -26,33 +27,44 @@ public class Connection{
     protected int lastPingID;
     protected long lastPingSendTime;
     protected int returnTripTime;
-    volatile boolean isConnected;
+    volatile boolean isConnected, disposed, udpPaused;
     volatile ArcNetException lastProtocolError;
     private Object arbitraryData;
 
     protected Connection(){
     }
 
-    void initialize(NetSerializer serialization, int writeBufferSize, int objectBufferSize){
-        tcp = new TcpConnection(serialization, writeBufferSize,
-        objectBufferSize);
+    void initialize(NetSerializer serialization, int writeBufferSize, int objectBufferSize, boolean direct){
+        tcp = new TcpConnection(serialization, writeBufferSize, objectBufferSize, direct);
     }
 
     /**
-     * Returns the server assigned ID. Will return -1 if this connection has
-     * never been connected or the last assigned ID if this connection has been
-     * disconnected.
+     * Returns the server assigned ID.
+     * Will return {@code 0} if this connection has never been connected
+     * or the last assigned ID if this connection has been disconnected.
      */
     public int getID(){
         return id;
     }
 
     /**
-     * Returns true if this connection is connected to the remote end. Note that
-     * a connection can become disconnected at any time.
+     * Returns true if this connection is connected to the remote end.
+     * Note that a connection can become disconnected at any time.
      */
     public boolean isConnected(){
         return isConnected;
+    }
+
+    public boolean isUDPConnected(){
+        return udpRemoteAddress != null || isClientUDP();
+    }
+
+    /**
+     * @return whether the UDP connection is from a client or a server.
+     * As on a server, the UDP socket is shared among all connections.
+     */
+    public boolean isClientUDP() {
+        return udp != null && udp.connectedAddress != null;
     }
 
     /**
@@ -69,6 +81,7 @@ public class Connection{
      */
     public int sendTCP(Object object){
         if(object == null) throw new IllegalArgumentException("object cannot be null.");
+        checkDisposed();
 
         try{
             return tcp.send(object);
@@ -87,6 +100,7 @@ public class Connection{
     public int sendUDP(Object object){
         if(object == null)
             throw new IllegalArgumentException("object cannot be null.");
+        checkDisposed();
         SocketAddress address = udpRemoteAddress;
         if(address == null && udp != null)
             address = udp.connectedAddress;
@@ -95,7 +109,6 @@ public class Connection{
 
         try{
             if(address == null) throw new SocketException("Connection is closed.");
-
             return udp.send(object, address);
         }catch(IOException | ArcNetException ex){
             close(DcReason.error);
@@ -105,28 +118,46 @@ public class Connection{
     }
 
     public void close(DcReason reason){
+        udpPaused = false;
         boolean wasConnected = isConnected;
         isConnected = false;
         tcp.close();
-        if(udp != null && udp.connectedAddress != null)
-            udp.close();
-        if(wasConnected){
-            notifyDisconnected(reason);
-        }
+        if(isClientUDP()) udp.close();
+        if(wasConnected) notifyDisconnected(reason);
         setConnected(false);
     }
 
+    protected void checkDisposed(){
+        if(disposed) throw new IllegalStateException("Connection is disposed.");
+    }
+
     /**
-     * Requests the connection to communicate with the remote computer to
-     * determine a new value for the {@link #getReturnTripTime() return trip
-     * time}. When the connection receives a {@link FrameworkMessage.Ping}
-     * object with {@link Ping#isReply isReply} set to true, the new return trip
-     * time is available.
+     * Dispose any resources of this connection. Therefore, it cannot be used anymore.
+     */
+    @Override
+    public void dispose(){
+        disposed = true;
+        close(DcReason.closed);
+        tcp.dispose();
+        if(isClientUDP()) udp.dispose();
+    }
+
+    @Override
+    public boolean isDisposed(){
+        return disposed;
+    }
+
+    /**
+     * Requests the connection to communicate with the remote computer to determine
+     * a new value for the {@link #getReturnTripTime() return trip time}.
+     * When the connection receives a {@link FrameworkMessage.Ping} object with
+     * {@link Ping#isReply isReply} set to true, the new return trip time is available.
      */
     public void updateReturnTripTime(){
+        checkDisposed();
         Ping ping = new Ping();
         ping.id = lastPingID++;
-        lastPingSendTime = System.currentTimeMillis();
+        lastPingSendTime = Time.millis();
         sendTCP(ping);
     }
 
@@ -141,35 +172,38 @@ public class Connection{
 
     /**
      * An empty object will be sent if the TCP connection has not sent an object
-     * within the specified milliseconds. Periodically sending a keep alive
-     * ensures that an abnormal close is detected in a reasonable amount of time
-     * (see {@link #setTimeout(int)} ). Also, some network hardware will close a
-     * TCP connection that ceases to transmit for a period of time (typically 1+
-     * minutes). Set to zero to disable. Defaults to 8000.
+     * within the specified milliseconds.
+     * Periodically sending a keep alive ensures that an abnormal close is detected
+     * in a reasonable amount of time (see {@link #setTimeout(int)} ).
+     * Also, some network hardware will close a TCP connection that ceases to
+     * transmit for a period of time (typically 1+ minutes).
+     * Set to zero to disable. Defaults to {@code 8000}.
      */
     public void setKeepAliveTCP(int keepAliveMillis){
         tcp.keepAliveMillis = keepAliveMillis;
     }
 
     /**
-     * If the specified amount of time passes without receiving an object over
-     * TCP, the connection is considered closed. When a TCP socket is closed
-     * normally, the remote end is notified immediately and this timeout is not
-     * needed. However, if a socket is closed abnormally (eg, power loss),
-     * ArcNet uses this timeout to detect the problem. The timeout should be
-     * set higher than the {@link #setKeepAliveTCP(int) TCP keep alive} for the
-     * remote end of the connection. The keep alive ensures that the remote end
-     * of the connection will be constantly sending objects, and setting the
-     * timeout higher than the keep alive allows for network latency. Set to
-     * zero to disable. Defaults to 12000.
+     * If the specified amount of time passes without receiving an object over TCP,
+     * the connection is considered closed.
+     * When a TCP socket is closed normally, the remote end is notified immediately
+     * and this timeout is not needed.
+     * However, if a socket is closed abnormally (eg, power loss), ArcNet uses this
+     * timeout to detect the problem.
+     * The timeout should be set higher than the {@link #setKeepAliveTCP(int) TCP
+     * keep alive} for the  remote end of the connection.
+     * The keep alive ensures that the remote end of the connection will be constantly
+     * sending objects, and setting the timeout higher than the keep alive allows for
+     * network latency.
+     * Set to zero to disable. Defaults to 12000.
      */
     public void setTimeout(int timeoutMillis){
         tcp.timeoutMillis = timeoutMillis;
     }
 
     /**
-     * Adds a listener to the connection. If the listener already exists, it is
-     * not added again.
+     * Adds a listener to the connection.
+     * If the listener already exists, it is not added again.
      * @param listener The listener to add.
      */
     public void addListener(NetListener listener){
@@ -197,12 +231,12 @@ public class Connection{
             Ping ping = (Ping)object;
             if(ping.isReply){
                 if(ping.id == lastPingID - 1){
-                    returnTripTime = (int)(System.currentTimeMillis()
-                    - lastPingSendTime);
+                    returnTripTime = (int)Time.sinceMillis(lastPingSendTime);
                 }
             }else{
                 ping.isReply = true;
                 sendTCP(ping);
+                ping.isReply = false; // restore state so listeners can know when it's a server ping
             }
         }
 
@@ -210,8 +244,7 @@ public class Connection{
     }
 
     /**
-     * Returns the local {@link Client} or {@link Server} to which this
-     * connection belongs.
+     * Returns the local {@link Client} or {@link Server} to which this connection belongs.
      */
     public EndPoint getEndPoint(){
         return endPoint;
@@ -221,6 +254,7 @@ public class Connection{
      * Returns the IP address and port of the remote end of the TCP connection,
      * or null if this connection is not connected.
      */
+    @SuppressWarnings("resource")
     public InetSocketAddress getRemoteAddressTCP(){
         SocketChannel socketChannel = tcp.socketChannel;
         if(socketChannel != null){
@@ -237,22 +271,21 @@ public class Connection{
      * or null if this connection is not connected.
      */
     public InetSocketAddress getRemoteAddressUDP(){
-        return udp.connectedAddress != null ? udp.connectedAddress : udpRemoteAddress;
+        return isClientUDP() ? udp.connectedAddress : udpRemoteAddress;
     }
 
     /**
      * Sets the friendly name of this connection. This is returned by
      * {@link #toString()} and is useful for providing application specific
-     * identifying information in the logging. May be null for the default name
-     * of "Connection X", where X is the connection ID.
+     * identifying information in the logging.
+     * May be null for the default name of "Connection X", where X is the connection ID.
      */
     public void setName(String name){
         this.name = name;
     }
 
     /**
-     * Returns the number of bytes that are waiting to be written to the TCP
-     * socket, if any.
+     * Returns the number of bytes that are waiting to be written to the TCP socket, if any.
      */
     public int getTcpWriteBufferSize(){
         return tcp.writeBuffer.position();
@@ -276,15 +309,12 @@ public class Connection{
 
     @Override
     public String toString(){
-        if(name != null)
-            return name;
-        return "Connection " + id;
+        return name != null ? name : "Connection " + getID();
     }
 
-    void setConnected(boolean isConnected){
+    protected void setConnected(boolean isConnected){
         this.isConnected = isConnected;
-        if(isConnected && name == null)
-            name = "Connection " + id;
+        if(isConnected && name == null) name = "Connection " + getID();
     }
 
     public Object getArbitraryData(){
@@ -293,5 +323,31 @@ public class Connection{
 
     public void setArbitraryData(Object arbitraryData){
         this.arbitraryData = arbitraryData;
+    }
+
+    /**
+     * Pause/resume TCP reading. Does nothing if not connected.
+     * Be aware that pausing for too long can lead to a timeout.
+     */
+    public void pauseTCPReading(boolean pause){
+        tcp.pauseReading(pause);
+    }
+
+    public boolean isTCPPaused(){
+        return tcp.isReadingPaused();
+    }
+
+    /**
+     * Pause/resume UDP reading. Does nothing if not connected.
+     * New datagrams will be silently dropped if this connection comes from a server,
+     * otherwise they will only be if buffer is full.
+     */
+    public void pauseUDPReading(boolean pause){
+        if(isClientUDP()) udp.pauseReading(pause);
+        udpPaused = true;
+    }
+
+    public boolean isUDPPaused(){
+        return udpPaused || udp.isReadingPaused();
     }
 }

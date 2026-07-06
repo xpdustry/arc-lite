@@ -61,8 +61,8 @@ public class OS{
         }else if(isIos || isAndroid){
             return Core.files.getLocalStoragePath();
         }else if(OS.isLinux){
-            if(System.getenv("XDG_DATA_HOME") != null){
-                String dir = System.getenv("XDG_DATA_HOME");
+            if(env("XDG_DATA_HOME") != null){
+                String dir = env("XDG_DATA_HOME");
                 if(!dir.endsWith("/")) dir += "/";
                 return dir + appname + "/";
             }
@@ -114,8 +114,7 @@ public class OS{
     }
 
     public static boolean execSafe(String command){
-        try{
-            BufferedReader in = new BufferedReader(new InputStreamReader(Runtime.getRuntime().exec(command).getInputStream(), Strings.utf8));
+        try(BufferedReader in = new BufferedReader(new InputStreamReader(Runtime.getRuntime().exec(command).getInputStream(), Strings.utf8))){
             String line;
             while((line = in.readLine()) != null){
                 System.out.println(line);
@@ -127,8 +126,7 @@ public class OS{
     }
 
     public static boolean execSafe(String... command){
-        try{
-            BufferedReader in = new BufferedReader(new InputStreamReader(Runtime.getRuntime().exec(command).getInputStream(), Strings.utf8));
+        try(BufferedReader in = new BufferedReader(new InputStreamReader(Runtime.getRuntime().exec(command).getInputStream(), Strings.utf8))){
             String line;
             while((line = in.readLine()) != null){
                 System.out.println(line);

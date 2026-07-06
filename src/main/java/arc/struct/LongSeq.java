@@ -78,6 +78,8 @@ public class LongSeq implements Iterable<Long>{
     }
 
     public void each(Longc consumer){
+        int size = this.size;
+        long[] items = this.items;
         for(int i = 0; i < size; i++){
             consumer.get(items[i]);
         }

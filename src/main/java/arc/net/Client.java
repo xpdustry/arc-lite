@@ -5,6 +5,7 @@ package arc.net;
 import arc.func.*;
 import arc.net.FrameworkMessage.*;
 import arc.util.*;
+import arc.util.pooling.ByteBufferPool;
 
 import java.io.*;
 import java.net.*;
@@ -21,50 +22,56 @@ public class Client extends Connection implements EndPoint{
     protected final NetSerializer serialization;
     private Selector selector;
     private int emptySelects;
+
     protected volatile boolean tcpRegistered, udpRegistered;
     private Object tcpRegistrationLock = new Object();
     private Object udpRegistrationLock = new Object();
-    protected volatile boolean shutdown;
+
+    protected volatile boolean shutdown = true, starting, connecting;
     private final Object updateLock = new Object();
     private Thread updateThread;
+
     protected int connectTimeout;
     protected InetAddress connectHost;
     protected int connectTcpPort;
     protected int connectUdpPort;
+
     protected boolean isClosed;
-    private final ExecutorService discoverExecutor = Threads.unboundedExecutor("Server Discovery");
+    private static ExecutorService discoverExecutor;
     private Prov<DatagramPacket> discoveryPacket = () -> new DatagramPacket(new byte[256], 256);
 
-    /**
-     * @param writeBufferSize One buffer of this size is allocated. Objects are serialized
-     * to the write buffer where the bytes are queued until they can
-     * be written to the TCP socket.
-     * <p>
-     * Normally the socket is writable and the bytes are written
-     * immediately. If the socket cannot be written to and enough
-     * serialized objects are queued to overflow the buffer, then the
-     * connection will be closed.
-     * <p>
-     * The write buffer should be sized at least as large as the
-     * largest object that will be sent, plus some head room to allow
-     * for some serialized objects to be queued in case the buffer is
-     * temporarily not writable. The amount of head room needed is
-     * dependent upon the size of objects being sent and how often
-     * they are sent.
-     * @param objectBufferSize One (using only TCP) or three (using both TCP and UDP) buffers
-     * of this size are allocated. These buffers are used to hold the
-     * bytes for a single object graph until it can be sent over the
-     * network or deserialized.
-     * <p>
-     * The object buffers should be sized at least as large as the
-     * largest object that will be sent or received.
-     */
     public Client(int writeBufferSize, int objectBufferSize, NetSerializer serialization){
-        endPoint = this;
+        this(writeBufferSize, objectBufferSize, false, serialization);
+    }
 
+    /**
+     * @param writeBufferSize One buffer of this size is allocated.
+     * Objects are serialized to the write buffer where the bytes are queued
+     * until they can be written to the TCP socket.
+     * <p>
+     * Normally the socket is writable and the bytes are written immediately.
+     * If the socket cannot be written to and enough serialized objects are
+     * queued to overflow the buffer, then the connection will be closed.
+     * <p>
+     * The write buffer should be sized at least as large as the  largest object
+     * that will be sent, plus some head room to allow for some serialized
+     * objects to be queued in case the buffer is temporarily not writable.
+     * The amount of head room needed is dependent upon the size of objects being
+     * sent and how often they are sent.
+     *
+     * @param objectBufferSize One (using only TCP) or three (using both TCP and
+     * UDP) buffers of this size are allocated.
+     * These buffers are used to hold the bytes for a single object graph until it
+     * can be sent over the network or deserialized.
+     * <p>
+     * The object buffers should be sized at least as large as the largest object
+     * that will be sent or received.
+     */
+    public Client(int writeBufferSize, int objectBufferSize, boolean directBuffers, NetSerializer serialization){
+        endPoint = this;
         this.serialization = serialization;
 
-        initialize(serialization, writeBufferSize, objectBufferSize);
+        initialize(serialization, writeBufferSize, objectBufferSize, directBuffers);
 
         try{
             selector = Selector.open();
@@ -102,8 +109,8 @@ public class Client extends Connection implements EndPoint{
     }
 
     /**
-     * Opens a TCP and UDP client. Blocks until the connection is complete or
-     * the timeout is reached.
+     * Opens a TCP and UDP client.
+     * Blocks until the connection is complete or the timeout is reached.
      * <p>
      * Because the framework must perform some minimal communication before the
      * connection is considered successful, {@link #update(int)} must be called
@@ -112,38 +119,37 @@ public class Client extends Connection implements EndPoint{
      * @throws IOException if the client could not be opened or connecting times out.
      */
     public void connect(int timeout, InetAddress host, int tcpPort, int udpPort) throws IOException{
-        if(host == null)
-            throw new IllegalArgumentException("host cannot be null.");
+        if(host == null) throw new IllegalArgumentException("host cannot be null.");
+        checkDisposed();
         if(Thread.currentThread() == getUpdateThread())
-            throw new IllegalStateException(
-            "Cannot connect on the connection's update thread.");
+            throw new IllegalStateException("Cannot connect on the connection's update thread.");
         this.connectTimeout = timeout;
         this.connectHost = host;
         this.connectTcpPort = tcpPort;
         this.connectUdpPort = udpPort;
         close();
-        id = -1;
+        id = 0;
+        connecting = true;
         try{
-            if(udpPort != -1)
-                udp = new UdpConnection(serialization,
-                tcp.readBuffer.capacity());
+            if(udpPort != -1) {
+                if (udp != null) udp.dispose();
+                udp = new UdpConnection(serialization, tcp.readBuffer.capacity(), tcp.readBuffer.isDirect());
+            }
 
             long endTime;
             synchronized(updateLock){
                 tcpRegistered = false;
                 selector.wakeup();
-                endTime = System.currentTimeMillis() + timeout;
-                tcp.connect(selector, new InetSocketAddress(host, tcpPort),
-                5000);
+                endTime = Time.nanos() + Time.millisToNanos(timeout);
+                tcp.connect(selector, new InetSocketAddress(host, tcpPort), timeout);
             }
 
             // Wait for RegisterTCP.
             synchronized(tcpRegistrationLock){
-                while(!tcpRegistered && System.currentTimeMillis() < endTime){
+                while(!tcpRegistered && Time.nanos() - endTime < 0){
                     try{
                         tcpRegistrationLock.wait(100);
-                    }catch(InterruptedException ignored){
-                    }
+                    }catch(InterruptedException ignored){}
                 }
                 if(!tcpRegistered){
                     throw new SocketTimeoutException(
@@ -152,36 +158,34 @@ public class Client extends Connection implements EndPoint{
                 }
             }
 
-            if(udpPort != -1){
-                InetSocketAddress udpAddress = new InetSocketAddress(host,
-                udpPort);
-                synchronized(updateLock){
-                    udpRegistered = false;
-                    selector.wakeup();
-                    udp.connect(selector, udpAddress);
-                }
+            if(udpPort == -1) return;
+            InetSocketAddress udpAddress = new InetSocketAddress(host, udpPort);
+            synchronized(updateLock){
+                udpRegistered = false;
+                selector.wakeup();
+                udp.connect(selector, udpAddress);
+            }
 
-                // Wait for RegisterUDP reply.
-                synchronized(udpRegistrationLock){
-                    while(!udpRegistered
-                    && System.currentTimeMillis() < endTime){
-                        RegisterUDP registerUDP = new RegisterUDP();
-                        registerUDP.connectionID = id;
-                        udp.send(registerUDP, udpAddress);
-                        try{
-                            udpRegistrationLock.wait(100);
-                        }catch(InterruptedException ignored){
-                        }
-                    }
-                    if(!udpRegistered)
-                        throw new SocketTimeoutException(
-                        "Connected, but timed out during UDP registration: "
-                        + host + ":" + udpPort);
+            // Wait for RegisterUDP reply.
+            synchronized(udpRegistrationLock){
+                while(!udpRegistered && Time.nanos() - endTime < 0){
+                    RegisterUDP registerUDP = new RegisterUDP();
+                    registerUDP.connectionID = id;
+                    udp.send(registerUDP, udpAddress);
+                    try{
+                        udpRegistrationLock.wait(100);
+                    }catch(InterruptedException ignored){}
                 }
+                if(!udpRegistered)
+                    throw new SocketTimeoutException(
+                    "Connected, but timed out during UDP registration: "
+                    + host + ":" + udpPort);
             }
         }catch(IOException ex){
             close();
             throw ex;
+        }finally{
+            connecting = false;
         }
     }
 
@@ -200,122 +204,127 @@ public class Client extends Connection implements EndPoint{
      * @throws IllegalStateException if connect has never been called.
      */
     public void reconnect(int timeout) throws IOException{
-        if(connectHost == null)
-            throw new IllegalStateException(
-            "This client has never been connected.");
+        if(connectHost == null) throw new IllegalStateException("This client has never been connected.");
         connect(timeout, connectHost, connectTcpPort, connectUdpPort);
     }
 
     /**
-     * Reads or writes any pending data for this client. Multiple threads should
-     * not call this method at the same time.
+     * Reads or writes any pending data for this client.
+     * Multiple threads should not call this method at the same time.
      * @param timeout Wait for up to the specified milliseconds for data to be ready
-     * to process. May be zero to return immediately if there is no
-     * data to process.
+     * to process.
+     * May be zero to return immediately if there is no data to process.
      */
     public void update(int timeout) throws IOException{
         updateThread = Thread.currentThread();
-        synchronized(updateLock){ // Blocks to avoid a select while the
-            // selector is used to bind the server
-            // connection.
-        }
-        long startTime = System.currentTimeMillis();
-        int select = 0;
-        if(timeout > 0){
-            select = selector.select(timeout);
-        }else{
-            select = selector.selectNow();
-        }
-        if(select == 0){
-            emptySelects++;
-            if(emptySelects == 100){
-                emptySelects = 0;
-                // NIO freaks and returns immediately with 0 sometimes, so try
-                // to keep from hogging the CPU.
-                long elapsedTime = System.currentTimeMillis() - startTime;
-                try{
-                    if(elapsedTime < 25)
-                        Thread.sleep(25 - elapsedTime);
-                }catch(InterruptedException ignored){
-                }
-            }
-        }else{
-            emptySelects = 0;
+        // Blocks to avoid a select while the selector is used to connect to the server.
+        synchronized(updateLock){}
+
+        if(select(timeout)){
             isClosed = false;
             Set<SelectionKey> keys = selector.selectedKeys();
             synchronized(keys){
-                for(Iterator<SelectionKey> iter = keys.iterator(); iter.hasNext(); ){
-                    keepAlive();
+                for(Iterator<SelectionKey> iter = keys.iterator(); iter.hasNext();){
                     SelectionKey selectionKey = iter.next();
                     iter.remove();
+
                     try{
-                        int ops = selectionKey.readyOps();
-                        if((ops & SelectionKey.OP_READ) == SelectionKey.OP_READ){
-                            if(selectionKey.attachment() == tcp){
-                                while(true){
-                                    Object object = tcp.readObject();
-                                    if(object == null)
-                                        break;
-                                    if(!tcpRegistered){
-                                        if(object instanceof RegisterTCP){
-                                            id = ((RegisterTCP)object).connectionID;
-                                            synchronized(tcpRegistrationLock){
-                                                tcpRegistered = true;
-                                                tcpRegistrationLock.notifyAll();
-                                                if(udp == null)
-                                                    setConnected(true);
-                                            }
-                                            if(udp == null)
-                                                notifyConnected();
-                                        }
-                                        continue;
-                                    }
-                                    if(udp != null && !udpRegistered){
-                                        if(object instanceof RegisterUDP){
-                                            synchronized(udpRegistrationLock){
-                                                udpRegistered = true;
-                                                udpRegistrationLock.notifyAll();
-                                                setConnected(true);
-                                            }
-                                            notifyConnected();
-                                        }
-                                        continue;
-                                    }
-                                    if(!isConnected)
-                                        continue;
-                                    notifyReceived(object);
-                                }
-                            }else{
-                                if(udp.readFromAddress() == null)
-                                    continue;
-                                Object object = udp.readObject();
-                                if(object == null)
-                                    continue;
-                                notifyReceived(object);
-                            }
-                        }
-                        if((ops & SelectionKey.OP_WRITE) == SelectionKey.OP_WRITE)
-                            tcp.writeOperation();
+                        doSelect(selectionKey);
                     }catch(CancelledKeyException ignored){
                         // Connection is closed.
                     }
                 }
             }
         }
-        if(isConnected){
-            long time = System.currentTimeMillis();
-            if(tcp.isTimedOut(time)){
-                close();
-            }else
-                keepAlive();
-            if(isIdle())
-                notifyIdle();
+
+        if(!isConnected) return;
+        long time = Time.millis();
+        if(tcp.isTimedOut(time)) close();
+        else keepAlive(time);
+        if(isIdle()) notifyIdle();
+    }
+
+    boolean select(int timeout) throws IOException {
+        long startTime = Time.nanos();
+        int select = timeout > 0 ? selector.select(timeout) : selector.selectNow();
+        if(select == 0){
+            if(++emptySelects == 100){
+                emptySelects = 0;
+                // NIO freaks and returns immediately with 0 sometimes, so try to keep from hogging the CPU.
+                long elapsedTime = Time.nanosToMillis(Time.nanos() - startTime);
+                long maxWait = Math.min(25, timeout);
+                try{
+                    // Better yielding or using onSpinWait?
+                    if(elapsedTime < maxWait) Thread.sleep(maxWait - elapsedTime);
+                }catch(InterruptedException ignored){}
+            }
+            return false;
+        }else{
+            emptySelects = 0;
+            return true;
         }
     }
 
-    void keepAlive(){
+    void doSelect(SelectionKey selectionKey) throws IOException{
+        int ops = selectionKey.readyOps();
+        UdpConnection udp = this.udp;
+
+        if((ops & SelectionKey.OP_READ) == SelectionKey.OP_READ){
+            if(selectionKey.attachment() == tcp){
+                while(true){
+                    Object object = tcp.readObject();
+                    if(object == null) break;
+
+                    if(!tcpRegistered){
+                        if(object instanceof RegisterTCP){
+                            id = ((RegisterTCP)object).connectionID;
+                            // We only want TCP, resend the packet to finish connecting
+                            if(udp == null) tcp.send(object);
+                            synchronized(tcpRegistrationLock){
+                                tcpRegistered = true;
+                                tcpRegistrationLock.notifyAll();
+                                if(udp == null) setConnected(true);
+                            }
+                            if(udp == null) notifyConnected();
+                        }
+                        continue;
+                    }
+
+                    if(udp != null && !udpRegistered){
+                        if(object instanceof RegisterUDP){
+                            synchronized(udpRegistrationLock){
+                                udpRegistered = true;
+                                udpRegistrationLock.notifyAll();
+                                setConnected(true);
+                            }
+                            notifyConnected();
+                        }
+                        continue;
+                    }
+
+                    if(!isConnected) continue;
+                    notifyReceived(object);
+                }
+
+            }else{
+                if(udp.readFromAddress() == null) return;
+                Object object = udp.readObject();
+                if(object == null) return;
+                notifyReceived(object);
+            }
+        }
+
+        if((ops & SelectionKey.OP_WRITE) == SelectionKey.OP_WRITE) {
+            tcp.writeOperation();
+        }
+    }
+
+    public void keepAlive(){
+        keepAlive(Time.millis());
+    }
+
+    void keepAlive(long time){
         if(!isConnected) return;
-        long time = System.currentTimeMillis();
         if(tcp.needsKeepAlive(time)) sendTCP(FrameworkMessage.keepAlive);
         if(udp != null && udpRegistered && udp.needsKeepAlive(time)) sendUDP(FrameworkMessage.keepAlive);
     }
@@ -328,67 +337,90 @@ public class Client extends Connection implements EndPoint{
 
     @Override
     public void run(){
-        shutdown = false;
-        while(!shutdown){
-            try{
-                update(250);
-            }catch(IOException ex){
-                close();
-            }catch(ArcNetException ex){
-                handleNetException(ex);
+        shutdown = starting = false;
+        try {
+            checkDisposed();
+            while(!shutdown){
+                try{
+                    update(250);
+                }catch(IOException ex){
+                    close();
+                }catch(ArcNetException ex){
+                    handleNetException(ex);
+                }
             }
+        }catch (Exception e) {
+            close();
+            throw e;
+        }finally {
+            shutdown = true;
         }
     }
 
     @Override
     public void start(){
+        checkDisposed();
+        if (starting) return;
+        starting = true;
         // Try to let any previous update thread stop.
         if(updateThread != null){
             shutdown = true;
             try{
                 updateThread.join(5000);
-            }catch(InterruptedException ignored){
-            }
+            }catch(InterruptedException ignored){}
         }
-        updateThread = new Thread(this, "Client");
-        updateThread.setDaemon(true);
-        updateThread.start();
+        updateThread = Threads.daemon("Client", this);
     }
 
     @Override
     public void stop(){
-        if(shutdown)
-            return;
+        if(shutdown) return;
         close();
+        starting = false;
         shutdown = true;
         selector.wakeup();
     }
 
     @Override
-    public void close(){
-        super.close(DcReason.closed);
-        synchronized(updateLock){ // Blocks to avoid a select while the
-            // selector is used to bind the server
-            // connection.
-        }
-        // Select one last time to complete closing the socket.
-        if(!isClosed){
-            isClosed = true;
-            selector.wakeup();
-        }
+    public boolean isStopped(){
+        return shutdown;
     }
 
-    /** Releases the resources used by this client, which may no longer be used.*/
-    public void dispose() throws IOException{
-        close();
-        selector.close();
+    @Override
+    public boolean isStarting(){
+        return starting;
+    }
+
+    @Override
+    public void close(){
+        super.close(DcReason.closed);
+        // Blocks to avoid a select while the selector is used to connect to the server.
+        synchronized(updateLock){}
+
+        // Select one last time to complete closing the socket.
+        if(isClosed) return;
+        isClosed = true;
+        selector.wakeup();
+    }
+
+    /**
+     * Releases the resources used by this client, which may no longer be used.
+     */
+    @Override
+    public void dispose(){
+        stop();
+        super.dispose();
+        try{
+            selector.close();
+        }catch(IOException ignored){}
     }
 
     /**
      * An empty object will be sent if the UDP connection is inactive more than
-     * the specified milliseconds. Network hardware may keep a translation table
-     * of inside to outside IP addresses and a UDP keep alive keeps this table
-     * entry from expiring. Set to zero to disable. Defaults to 19000.
+     * the specified milliseconds.
+     * Network hardware may keep a translation table of inside to outside IP addresses
+     * and a UDP keep alive keeps this table entry from expiring.
+     * Set to zero to disable. Defaults to {@code 19000}.
      */
     public void setKeepAliveUDP(int keepAliveMillis){
         if(udp == null) throw new IllegalStateException("Not connected via UDP.");
@@ -400,26 +432,29 @@ public class Client extends Connection implements EndPoint{
         return updateThread;
     }
 
+    @Override
     public NetSerializer getSerialization(){
         return serialization;
     }
 
     private void broadcast(int udpPort, DatagramSocket socket) throws IOException{
-        ByteBuffer dataBuffer = ByteBuffer.allocate(64);
-        serialization.write(dataBuffer, FrameworkMessage.discoverHost);
-        dataBuffer.flip();
-        byte[] data = new byte[dataBuffer.limit()];
-        dataBuffer.get(data);
-        for(NetworkInterface iface : Collections.list(NetworkInterface.getNetworkInterfaces())){
-            if(!iface.isUp()){
-                continue;
-            }
+        ByteBuffer data = ByteBufferPool.getHeap(16);
+        try{
+            serialization.write(data, FrameworkMessage.discoverHost);
+            data.flip();
+            int len = data.remaining();
 
-            for(InterfaceAddress baseAddress : iface.getInterfaceAddresses()){
-                InetAddress address = baseAddress.getBroadcast();
-                if(address == null) continue;
-                socket.send(new DatagramPacket(data, data.length, address, udpPort));
+            for(NetworkInterface iface : Collections.list(NetworkInterface.getNetworkInterfaces())){
+                if(!iface.isUp()) continue;
+
+                for(InterfaceAddress baseAddress : iface.getInterfaceAddresses()){
+                    InetAddress address = baseAddress.getBroadcast();
+                    if(address == null) continue;
+                    socket.send(new DatagramPacket(data.array(), data.arrayOffset(), len, address, udpPort));
+                }
             }
+        }finally{
+            ByteBufferPool.free(data);
         }
     }
 
@@ -428,8 +463,11 @@ public class Client extends Connection implements EndPoint{
      * @param udpPort The UDP port of the server.
      * @param timeoutMillis The number of milliseconds to wait for a response.
      */
-    public void discoverHosts(int udpPort, String multicastGroup, int multicastPort, int timeoutMillis, Cons<DatagramPacket> handler, Runnable done){
+    public void discoverHosts(int udpPort, String multicastGroup, int multicastPort, int timeoutMillis,
+                              Cons<DatagramPacket> handler, Runnable done){
         final boolean[] isDone = {false};
+        // Only create the pool at first usage
+        if(discoverExecutor == null) discoverExecutor = Threads.unboundedExecutor("Server Discovery");
 
         //broadcast
         discoverExecutor.submit(() -> {
@@ -454,15 +492,13 @@ public class Client extends Connection implements EndPoint{
 
         //multicast
         discoverExecutor.submit(() -> {
+            ByteBuffer data = ByteBufferPool.getHeap(16);
             try(DatagramSocket socket = new DatagramSocket()){
+                serialization.write(data, FrameworkMessage.discoverHost);
+                data.flip();
 
-                ByteBuffer dataBuffer = ByteBuffer.allocate(64);
-                serialization.write(dataBuffer, new DiscoverHost());
-                dataBuffer.flip();
-                byte[] data = new byte[dataBuffer.limit()];
-                dataBuffer.get(data);
-
-                socket.send(new DatagramPacket(data, data.length, InetAddress.getByName(multicastGroup), multicastPort));
+                socket.send(new DatagramPacket(data.array(), data.arrayOffset(), data.remaining(),
+                            InetAddress.getByName(multicastGroup), multicastPort));
                 socket.setSoTimeout(timeoutMillis);
                 while(true){
                     DatagramPacket packet = discoveryPacket.get();
@@ -470,6 +506,7 @@ public class Client extends Connection implements EndPoint{
                     handler.get(packet);
                 }
             }finally{
+                ByteBufferPool.free(data);
                 synchronized(isDone){
                     if(!isDone[0]){
                         isDone[0] = true;

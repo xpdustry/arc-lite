@@ -20,6 +20,10 @@ public class ByteBufferInput implements DataInput{
         this.buffer = buffer;
     }
 
+    public void readFully(ByteBuffer out) {
+        out.put(buffer);
+    }
+
     @Override
     public void readFully(byte[] bytes){
         buffer.get(bytes);

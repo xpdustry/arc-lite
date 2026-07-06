@@ -195,6 +195,8 @@ public class Seq<T> implements Iterable<T>, Eachable<T>{
     }
 
     public <E extends T> void each(Boolf<? super T> pred, Cons<E> consumer){
+        int size = this.size;
+        T[] items = this.items;
         for(int i = 0; i < size; i++){
             if(pred.get(items[i])) consumer.get((E)items[i]);
         }
@@ -202,6 +204,8 @@ public class Seq<T> implements Iterable<T>, Eachable<T>{
 
     @Override
     public void each(Cons<? super T> consumer){
+        int size = this.size;
+        T[] items = this.items;
         for(int i = 0; i < size; i++){
             consumer.get(items[i]);
         }

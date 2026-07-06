@@ -78,6 +78,8 @@ public class ShortSeq implements Iterable<Short>{
     }
 
     public void each(Shortc consumer){
+        int size = this.size;
+        short[] items = this.items;
         for(int i = 0; i < size; i++){
             consumer.get(items[i]);
         }

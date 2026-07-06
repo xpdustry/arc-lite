@@ -7,10 +7,15 @@ import java.net.*;
 import java.nio.ByteBuffer;
 import java.nio.channels.*;
 
+import arc.util.Disposable;
+import arc.util.Time;
+import arc.util.pooling.ByteBufferPool;
+
 /**
  * @author Nathan Sweet <misc@n4te.com>
  */
-class UdpConnection{
+@SuppressWarnings("resource")
+class UdpConnection implements Disposable{
     InetSocketAddress connectedAddress;
     DatagramChannel datagramChannel;
     int keepAliveMillis = 19000;
@@ -19,24 +24,28 @@ class UdpConnection{
     private SelectionKey selectionKey;
     private final Object writeLock = new Object();
     private long lastCommunicationTime;
+    private volatile boolean readPaused, disposed;
 
-    public UdpConnection(NetSerializer serialization, int bufferSize){
+    public UdpConnection(NetSerializer serialization, int bufferSize, boolean direct){
         this.serialization = serialization;
-        readBuffer = ByteBuffer.allocate(bufferSize);
-        writeBuffer = ByteBuffer.allocateDirect(bufferSize);
+        readBuffer = ByteBufferPool.get().obtain(bufferSize, direct);
+        writeBuffer = ByteBufferPool.get().obtain(bufferSize, direct);
     }
 
     public void bind(Selector selector, InetSocketAddress localPort) throws IOException{
+        checkDisposed();
         close();
         readBuffer.clear();
         writeBuffer.clear();
+        readPaused = false;
+
         try{
             datagramChannel = selector.provider().openDatagramChannel();
             datagramChannel.socket().bind(localPort);
             datagramChannel.configureBlocking(false);
-            selectionKey = datagramChannel.register(selector, SelectionKey.OP_READ);
 
-            lastCommunicationTime = System.currentTimeMillis();
+            selectionKey = datagramChannel.register(selector, SelectionKey.OP_READ);
+            lastCommunicationTime = Time.millis();
         }catch(IOException ex){
             close();
             throw ex;
@@ -44,9 +53,12 @@ class UdpConnection{
     }
 
     public void connect(Selector selector, InetSocketAddress remoteAddress) throws IOException{
+        checkDisposed();
         close();
         readBuffer.clear();
         writeBuffer.clear();
+        readPaused = false;
+
         try{
             datagramChannel = selector.provider().openDatagramChannel();
             datagramChannel.socket().bind(null);
@@ -54,9 +66,7 @@ class UdpConnection{
             datagramChannel.configureBlocking(false);
 
             selectionKey = datagramChannel.register(selector, SelectionKey.OP_READ);
-
-            lastCommunicationTime = System.currentTimeMillis();
-
+            lastCommunicationTime = Time.millis();
             connectedAddress = remoteAddress;
         }catch(IOException ex){
             close();
@@ -65,10 +75,11 @@ class UdpConnection{
     }
 
     public InetSocketAddress readFromAddress() throws IOException{
+        checkDisposed();
         DatagramChannel datagramChannel = this.datagramChannel;
-        if(datagramChannel == null)
-            throw new SocketException("Connection is closed.");
-        lastCommunicationTime = System.currentTimeMillis();
+        if(datagramChannel == null) throw new SocketException("Connection is closed.");
+        if(readPaused) return null;
+        lastCommunicationTime = Time.millis();
 
         if(!datagramChannel.isConnected())
             return (InetSocketAddress)datagramChannel.receive(readBuffer); //always null on Android >= 5.0
@@ -77,15 +88,18 @@ class UdpConnection{
     }
 
     public Object readObject(){
+        if(disposed) return null;
+        if(readPaused) {
+            readBuffer.clear();
+            return null;
+        }
         readBuffer.flip();
         try{
             try{
                 Object object = serialization.read(readBuffer);
                 if(readBuffer.hasRemaining())
-                    throw new ArcNetException("Incorrect number of bytes ("
-                    + readBuffer.remaining()
-                    + " remaining) used to deserialize object: "
-                    + object);
+                    throw new ArcNetException("Incorrect number of bytes (" + readBuffer.remaining()
+                                            + " remaining) used to deserialize object: " + object);
                 return object;
             }catch(Exception ex){
                 throw new ArcNetException("Error during UDP deserialization.", ex);
@@ -99,9 +113,10 @@ class UdpConnection{
      * This method is thread safe.
      */
     public int send(Object object, SocketAddress address) throws IOException{
+        checkDisposed();
         DatagramChannel datagramChannel = this.datagramChannel;
-        if(datagramChannel == null)
-            throw new SocketException("Connection is closed.");
+        if(datagramChannel == null) throw new SocketException("Connection is closed.");
+
         synchronized(writeLock){
             try{
                 try{
@@ -113,7 +128,7 @@ class UdpConnection{
                 int length = writeBuffer.limit();
                 datagramChannel.send(writeBuffer, address);
 
-                lastCommunicationTime = System.currentTimeMillis();
+                lastCommunicationTime = Time.millis();
 
                 boolean wasFullWrite = !writeBuffer.hasRemaining();
                 return wasFullWrite ? length : -1;
@@ -125,15 +140,50 @@ class UdpConnection{
 
     public void close(){
         connectedAddress = null;
+        if(datagramChannel == null) return;
         try{
-            if(datagramChannel != null){
-                datagramChannel.close();
-                datagramChannel = null;
-                if(selectionKey != null)
-                    selectionKey.selector().wakeup();
-            }
-        }catch(IOException ignored){
+            datagramChannel.close();
+            datagramChannel = null;
+            if(selectionKey != null) selectionKey.selector().wakeup();
+        }catch(IOException ignored){}
+    }
+
+    private void checkDisposed() throws IOException{
+        if(disposed) throw new SocketException("Connection is disposed.");
+    }
+
+    @Override
+    public void dispose(){
+        if(disposed) return;
+        disposed = true;
+        close();
+        selectionKey = null;
+        ByteBufferPool.free(readBuffer);
+        ByteBufferPool.free(writeBuffer);
+    }
+
+    @Override
+    public boolean isDisposed(){
+        return disposed;
+    }
+
+    /**
+     * Pause/resume reading. Does nothing if not connected.
+     * This will silently drop new datagrams when buffer is full.
+     */
+    public void pauseReading(boolean paused){
+        if(datagramChannel == null) return;
+        synchronized(writeLock){
+            if(readPaused == paused || selectionKey == null) return;
+            readPaused = paused;
+            int ops = selectionKey.interestOps();
+            selectionKey.interestOps(paused ? (ops & ~SelectionKey.OP_READ) : (ops | SelectionKey.OP_READ));
+            selectionKey.selector().wakeup();
         }
+    }
+
+    public boolean isReadingPaused() {
+        return readPaused;
     }
 
     public boolean needsKeepAlive(long time){

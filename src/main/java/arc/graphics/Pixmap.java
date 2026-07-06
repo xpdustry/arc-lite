@@ -7,7 +7,6 @@ import arc.graphics.PixmapIO.*;
 import arc.graphics.g2d.*;
 import arc.math.*;
 import arc.util.*;
-
 import java.io.*;
 import java.nio.*;
 
@@ -31,6 +30,8 @@ import java.nio.*;
  * @author badlogicgames@gmail.com
  */
 public class Pixmap implements Disposable{
+    protected boolean disposed;
+
     /** Size of the pixmap. Do not modify unless you know what you are doing. */
     public int width, height;
 
@@ -575,7 +576,14 @@ public class Pixmap implements Disposable{
     /** Releases all resources associated with this Pixmap. */
     @Override
     public void dispose(){
+        if(disposed) return;
+        disposed = true;
+        //ByteBufferPool.free(pixels);
+    }
 
+    @Override
+    public boolean isDisposed(){
+        return disposed;
     }
 
     public void set(int x, int y, Color color){
@@ -688,7 +696,7 @@ public class Pixmap implements Disposable{
     private void load(int width, int height){
         this.width = width;
         this.height = height;
-        this.pixels = ByteBuffer.allocateDirect(width * height * 4);
+        this.pixels = ByteBuffer.allocateDirect/*ByteBufferPool.getDirect*/(width * height * 4);
     }
 
     @Override

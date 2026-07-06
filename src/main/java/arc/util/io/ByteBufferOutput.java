@@ -28,6 +28,10 @@ public class ByteBufferOutput implements DataOutput{
         buffer.put((byte) i);
     }
 
+    public void write(ByteBuffer in) {
+        buffer.put(in);
+    }
+
     @Override
     public void write(byte[] bytes){
         buffer.put(bytes);
