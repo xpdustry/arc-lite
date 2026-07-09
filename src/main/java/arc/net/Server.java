@@ -86,11 +86,17 @@ public class Server implements EndPoint{
 
         this.discoveryHandler = (address, handler) -> handler.respond(ByteBufferPool.getHeap(0));
 
+        Selector s;
         try{
-            selector = Selector.open();
+            try{
+                s = NioUtils.newOptimizedSelector();
+            }catch(RuntimeException ignored){
+                s = NioUtils.newSelector();
+            }
         }catch(IOException ex){
-            throw new RuntimeException("Error opening the selector.", ex);
+            throw new RuntimeException("Error opening selector.", ex);
         }
+        selector = s;
     }
 
     public void setMulticast(String group, int multicastPort){
@@ -171,7 +177,7 @@ public class Server implements EndPoint{
         synchronized(updateLock){}
 
         clearStales(); // Clear any staling connections
-        if (!select(timeout)) {
+        if (!waitForSelect(timeout)) {
             updateConnections();
             return;
         }
@@ -211,7 +217,7 @@ public class Server implements EndPoint{
         updateConnections();
     }
 
-    boolean select(int timeout) throws IOException {
+    boolean waitForSelect(int timeout) throws IOException {
         long startTime = Time.nanos();
         int select = timeout > 0 ? selector.select(timeout) : selector.selectNow();
         if(select == 0){
@@ -237,21 +243,23 @@ public class Server implements EndPoint{
         UdpConnection udp = this.udp;
 
         if(fromConnection != null){ // Must be a TCP read or write operation.
-            if(udp != null && fromConnection.udpRemoteAddress == null){
-                fromConnection.close(DcReason.error);
-                return false;
-            }
-
             if((ops & SelectionKey.OP_READ) == SelectionKey.OP_READ){
                 try{
                     while(true){
                         Object object = fromConnection.tcp.readObject();
                         if(object == null) break;
+                        if(object instanceof RegisterTCP && udp != null && fromConnection.udpRemoteAddress == null){
+                            pendingConnections.remove(fromConnection.getID());
+                            fromConnection.tcpOnly = true;
+                            addConnection(fromConnection);
+                            fromConnection.notifyConnected();
+                            break;
+                        }
                         fromConnection.notifyReceived(object);
                     }
                 }catch(IOException | ArcNetException ex){
                     ArcNet.handleError(new ArcNetException("Error reading TCP from connection: " + fromConnection, ex));
-                    fromConnection.close(ex.getMessage() != null && ex.getMessage().contains("closed") ? DcReason.closed : DcReason.error);
+                    fromConnection.close(closeReason(ex.getMessage()));
                 }
             }
 
@@ -259,7 +267,7 @@ public class Server implements EndPoint{
                 try{
                     fromConnection.tcp.writeOperation();
                 }catch(IOException ex){
-                    fromConnection.close(ex.getMessage() != null && ex.getMessage().contains("closed") ? DcReason.closed : DcReason.error);
+                    fromConnection.close(closeReason(ex.getMessage()));
                 }
             }
             return false;
@@ -290,9 +298,15 @@ public class Server implements EndPoint{
         UdpConnection udp = this.udp;
 
         // Drop object
-        if(fromConnection != null && fromConnection.udpPaused){
-            udp.readBuffer.clear();
-            return;
+        if(fromConnection != null){
+            if(fromConnection.udpPaused){
+                udp.readBuffer.clear();
+                return;
+            }
+            if(fromConnection.tcpOnly){
+                selectionKey.channel().close(); // Connection was registered as TCP only!
+                return;
+            }
         }
 
         Object object;
@@ -304,7 +318,6 @@ public class Server implements EndPoint{
         }
 
         if(object instanceof FrameworkMessage){
-            //TODO: give ability to a client to only connect via TCP by receiving another time RegisterTCP
             if(object instanceof RegisterUDP){
                 // Store the fromAddress on the connection and reply over TCP
                 // with a RegisterUDP to indicate success.
@@ -312,8 +325,9 @@ public class Server implements EndPoint{
                 Connection connection = pendingConnections.remove(fromConnectionID);
                 if(connection == null || connection.udpRemoteAddress != null) return;
                 // It is illegal to register an UDP connection without the same address as the TCP one
+                // Or connection was registered as TCP only
                 InetSocketAddress toAddress = connection.getRemoteAddressTCP();
-                if(toAddress == null || !fromAddress.getAddress().equals(toAddress.getAddress())){
+                if(connection.tcpOnly || toAddress == null || !fromAddress.getAddress().equals(toAddress.getAddress())){
                     pendingConnections.put(fromConnectionID, connection);
                     selectionKey.channel().close();
                     return;
@@ -328,7 +342,10 @@ public class Server implements EndPoint{
 
             if(object instanceof DiscoverHost){
                 try{
-                    discoveryHandler.onDiscoverReceived(fromAddress.getAddress(), buff -> udp.datagramChannel.send(buff, fromAddress));
+                    discoveryHandler.onDiscoverReceived(
+                        fromAddress.getAddress(),
+                        buff -> udp.datagramChannel.send(buff, fromAddress)
+                    );
                 }catch(IOException ignored){}
                 return;
             }
@@ -336,6 +353,10 @@ public class Server implements EndPoint{
 
         if(fromConnection == null) return;
         fromConnection.notifyReceived(object);
+    }
+
+    DcReason closeReason(String errMsg){
+        return errMsg != null && errMsg.contains("closed") ? DcReason.closed : DcReason.error;
     }
 
     void updateConnections() {
@@ -411,7 +432,8 @@ public class Server implements EndPoint{
     private void acceptOperation(SocketChannel socketChannel){
         if(connectFilter != null){
             try{
-                if(!connectFilter.accept(((InetSocketAddress)socketChannel.getRemoteAddress()).getAddress().getHostAddress())){
+                String address = ((InetSocketAddress)socketChannel.getRemoteAddress()).getAddress().getHostAddress();
+                if(!connectFilter.accept(address)){
                     socketChannel.close();
                     return;
                 }

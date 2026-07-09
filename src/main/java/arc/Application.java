@@ -33,7 +33,10 @@ public interface Application extends Disposable{
     }
 
     /** @return what {@link ApplicationType} this application has, e.g. Android or Desktop */
-    ApplicationType getType();
+    @Deprecated
+    default ApplicationType getType(){
+        return ApplicationType.headless;
+    }
 
     @Deprecated
     default boolean isDesktop(){
@@ -60,6 +63,7 @@ public interface Application extends Disposable{
         return isAndroid() || isIOS();
     }
 
+    @Deprecated
     default boolean isWeb(){
         return getType() == ApplicationType.web;
     }
@@ -129,11 +133,15 @@ public interface Application extends Disposable{
         }
     }
 
-    /** Enumeration of possible {@link Application} types */
+    /**
+     * Enumeration of possible {@link Application} types.
+     * @deprecated Useless as this fork only contains utilities for headless apps.
+     */
+    @Deprecated
     enum ApplicationType{
         @Deprecated android,
         @Deprecated desktop,
-        headless,
+        @Deprecated headless,
         @Deprecated web,
         @Deprecated iOS
     }

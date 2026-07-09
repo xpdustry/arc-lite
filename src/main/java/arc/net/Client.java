@@ -73,11 +73,17 @@ public class Client extends Connection implements EndPoint{
 
         initialize(serialization, writeBufferSize, objectBufferSize, directBuffers);
 
+        Selector s;
         try{
-            selector = Selector.open();
+            try{
+                s = NioUtils.newOptimizedSelector();
+            }catch(RuntimeException ignored){
+                s = NioUtils.newSelector();
+            }
         }catch(IOException ex){
             throw new RuntimeException("Error opening selector.", ex);
         }
+        selector = s;
     }
 
     public void setDiscoveryPacket(Prov<DatagramPacket> discoveryPacket){
@@ -275,6 +281,7 @@ public class Client extends Connection implements EndPoint{
                     Object object = tcp.readObject();
                     if(object == null) break;
 
+                    //TODO: check for TCP+UDP validation returned by the server?
                     if(!tcpRegistered){
                         if(object instanceof RegisterTCP){
                             id = ((RegisterTCP)object).connectionID;

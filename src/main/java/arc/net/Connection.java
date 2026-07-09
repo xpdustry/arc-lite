@@ -30,6 +30,7 @@ public class Connection implements Disposable{
     volatile boolean isConnected, disposed, udpPaused;
     volatile ArcNetException lastProtocolError;
     private Object arbitraryData;
+    boolean tcpOnly;
 
     protected Connection(){
     }
@@ -56,7 +57,7 @@ public class Connection implements Disposable{
     }
 
     public boolean isUDPConnected(){
-        return udpRemoteAddress != null || isClientUDP();
+        return !tcpOnly && (udpRemoteAddress != null || isClientUDP());
     }
 
     /**
@@ -289,6 +290,14 @@ public class Connection implements Disposable{
      */
     public int getTcpWriteBufferSize(){
         return tcp.writeBuffer.position();
+    }
+
+    /**
+     * Returns the number of bytes remaining in the TCP buffer.
+     * Can be used to determine if the write buffer is about to overflow.
+     */
+    public int getTcpWriteBufferRemaining(){
+        return tcp.writeBuffer.remaining();
     }
 
     /**
