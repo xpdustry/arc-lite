@@ -15,7 +15,7 @@ import arc.util.pooling.ByteBufferPool;
  * @author Nathan Sweet <misc@n4te.com>
  */
 @SuppressWarnings("resource")
-class TcpConnection implements Disposable{
+public class TcpConnection implements Disposable{
     SocketChannel socketChannel;
     int keepAliveMillis = 8000;
     final ByteBuffer readBuffer, writeBuffer;

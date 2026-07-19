@@ -780,12 +780,10 @@ public class Fi implements Comparable<Fi>{
                         return Seq.select(list(), f -> filter.accept(f.file)).toArray(Fi.class);
                     }
                 };
+            }else if(type == FileType.absolute){
+                parent = new File("/");
             }else{
-                if(type == FileType.absolute){
-                    parent = new File("/");
-                }else{
-                    parent = new File("");
-                }
+                parent = new File("");
             }
         }
         return new Fi(parent, type);
@@ -950,8 +948,7 @@ public class Fi implements Comparable<Fi>{
     public int hashCode(){
         int hash = 1;
         hash = hash * 37 + type.hashCode();
-        hash = hash * 67 + path().hashCode();
-        return hash;
+        return hash * 67 + path().hashCode();
     }
 
     @Override

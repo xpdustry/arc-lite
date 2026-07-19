@@ -4,6 +4,7 @@ import java.util.concurrent.atomic.*;
 
 /**
  * A lock-less thread-safe unbounded queue. Allocation is only done when growing.
+ * <p>
  * Why? ... Because it's funny having an overkill thing XD.
  */
 public class TaskQueue{

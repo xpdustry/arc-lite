@@ -3,7 +3,7 @@ package arc.util;
 import java.util.Arrays;
 
 public class Interval{
-    float[] times;
+    protected float[] times;
 
     public Interval(int capacity){
         times = new float[capacity];

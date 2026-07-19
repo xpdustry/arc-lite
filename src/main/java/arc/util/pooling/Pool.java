@@ -64,9 +64,16 @@ abstract public class Pool<T>{
      * If the pool already contains {@link #max} free objects, the specified object is reset but not added to the pool.
      * <p>
      * The pool does not check if an object is already freed, so the same object must not be freed multiple times.
-     * @return {@code true} if the object has been placed to the pool array, else it means that the pool is full.
      */
-    public boolean free(T object){
+    public void free(T object){
+        offer(object);
+    }
+
+    /**
+     * Same as {@link #free()}, but returns {@code true} if the object has been placed to the pool array.
+     * Else it means that the pool is full.
+     */
+    public boolean offer(T object){
         if(object == null) throw new IllegalArgumentException("object cannot be null.");
         for(;;){
             int t = tail.get();
@@ -102,7 +109,7 @@ abstract public class Pool<T>{
         for(int i = 0; i < objects.size; i++){
             T object = objects.get(i);
             if(object == null) continue;
-            if(!free(object)) reset(object);
+            if(!offer(object)) reset(object);
         }
     }
 
@@ -114,7 +121,7 @@ abstract public class Pool<T>{
     /** Fill the pool with {@code size} new objects. */
     public void fill(int size){
         for(int i = 0; i < size; i++){
-            if(!free(newObject())) return;
+            if(!offer(newObject())) return;
         }
     }
 

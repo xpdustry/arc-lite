@@ -1,16 +1,15 @@
 package arc;
 
 import arc.files.Fi;
+import arc.util.Structs;
 
 public abstract class ApplicationCore implements ApplicationListener{
     protected ApplicationListener[] modules = {};
 
     public void add(ApplicationListener module){
-        //use an array instead of a seq/list, for faster iteration; modules do not get added often, so a resize each time is acceptable
-        ApplicationListener[] news = new ApplicationListener[modules.length + 1];
-        news[news.length - 1] = module;
-        System.arraycopy(modules, 0, news, 0, modules.length);
-        modules = news;
+        //use an array instead of a seq/list, for faster iteration;
+        //modules do not get added often, so a resize each time is acceptable
+        modules = Structs.add(modules, module);
     }
 
     public abstract void setup();
@@ -18,10 +17,7 @@ public abstract class ApplicationCore implements ApplicationListener{
     @Override
     public void init(){
         setup();
-
-        for(ApplicationListener listener : modules){
-            listener.init();
-        }
+        Structs.each(ApplicationListener::init, modules);
     }
 
     @Override
@@ -33,30 +29,22 @@ public abstract class ApplicationCore implements ApplicationListener{
 
     @Override
     public void update(){
-        for(ApplicationListener listener : modules){
-            listener.update();
-        }
+        Structs.each(ApplicationListener::update, modules);
     }
 
     @Override
     public void pause(){
-        for(ApplicationListener listener : modules){
-            listener.pause();
-        }
+        Structs.each(ApplicationListener::pause, modules);
     }
 
     @Override
     public void resume(){
-        for(ApplicationListener listener : modules){
-            listener.resume();
-        }
+        Structs.each(ApplicationListener::resume, modules);
     }
 
     @Override
     public void dispose(){
-        for(ApplicationListener listener : modules){
-            listener.dispose();
-        }
+        Structs.each(ApplicationListener::dispose, modules);
     }
 
     @Override

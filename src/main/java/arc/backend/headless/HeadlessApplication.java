@@ -18,12 +18,9 @@ public class HeadlessApplication implements Application{
     protected Thread mainLoopThread;
     protected boolean running = true;
 
-    long frameId = -1;
+    long frameId = -1, frameStart, lastTime;
     float deltaTime = 0;
-    long frameStart = 0;
-    int frames = 0;
-    int fps;
-    long lastTime = System.nanoTime();
+    int frames, fps;
 
     public HeadlessApplication(ApplicationListener listener){
         this(listener, 1f / 60f, t -> { throw new RuntimeException(t); });
@@ -37,14 +34,13 @@ public class HeadlessApplication implements Application{
     public HeadlessApplication(ApplicationListener listener, float renderIntervalSec, Cons<Throwable> exceptionHandler){
         addListener(listener);
         this.exceptionHandler = exceptionHandler;
+        renderInterval = renderIntervalSec > 0 ? (long)(renderIntervalSec * Time.nanosPerSecond) :
+                         (renderIntervalSec < 0 ? -1 : 0);
 
         Core.settings = new Settings();
         Core.app = this;
         Core.files = new MockFiles();
         Core.graphics = new MockGraphics(this);
-
-        renderInterval = renderIntervalSec > 0 ? (long)(renderIntervalSec * 1000000000f) : (renderIntervalSec < 0 ? -1 : 0);
-
         initialize();
     }
 
@@ -55,10 +51,9 @@ public class HeadlessApplication implements Application{
     }
 
     void mainLoop(){
-        synchronized(listeners){
-            for(ApplicationListener listener : listeners){
-                listener.init();
-            }
+        // Use an iterator in case of listeners added while initializing
+        for(ApplicationListener listener : listeners){
+            listener.init();
         }
 
         long t = Time.nanos() + renderInterval;
@@ -67,36 +62,36 @@ public class HeadlessApplication implements Application{
                 final long n = Time.nanos();
                 if(t > n){
                     long sleep = t - n;
-                    Threads.sleep(sleep / 1000000, (int)(sleep % 1000000));
-
+                    Threads.sleep(sleep / Time.nanosPerMilli, (int)(sleep % Time.nanosPerMilli));
                     t += renderInterval;
                 }else{
                     t = n + renderInterval;
                 }
-
-                runnables.run();
-                incrementFrameId();
-                defaultUpdate();
-
-                synchronized(listeners){
-                    for(ApplicationListener listener : listeners){
-                        listener.update();
-                    }
-                }
-                updateTime();
+                update();
             }
         }
 
-        synchronized(listeners){
-            for(ApplicationListener listener : listeners){
-                listener.pause();
-                listener.dispose();
-            }
-            dispose();
+        for(ApplicationListener listener : listeners){
+            listener.pause();
+            listener.dispose();
         }
+        dispose();
     }
 
-    public void updateTime(){
+    /** Called each frames. */
+    protected void update(){
+        runnables.run();
+        incrementFrameId();
+        defaultUpdate();
+        listeners.each(ApplicationListener::update);
+        updateTime();
+    }
+
+    protected void incrementFrameId(){
+        frameId++;
+    }
+
+    protected void updateTime(){
         long time = System.nanoTime();
         deltaTime = (time - lastTime) / 1000000000.0f;
         lastTime = time;
@@ -107,11 +102,6 @@ public class HeadlessApplication implements Application{
             frameStart = time;
         }
         frames++;
-    }
-
-
-    public void incrementFrameId() {
-        frameId++;
     }
 
     @Override
@@ -135,11 +125,6 @@ public class HeadlessApplication implements Application{
     }
 
     @Override
-    public ApplicationType getType(){
-        return ApplicationType.headless;
-    }
-
-    @Override
     public Seq<ApplicationListener> getListeners(){
         return listeners;
     }
@@ -153,5 +138,4 @@ public class HeadlessApplication implements Application{
     public void exit(){
         post(() -> running = false);
     }
-
 }

@@ -4,7 +4,6 @@ import arc.struct.Seq;
 
 /** @author xoppa */
 public class PerformanceCounters{
-    private static final float nano2seconds = 1f / 1000000000.0f;
     public final Seq<PerformanceCounter> counters = new Seq<>();
     private long lastTick = 0L;
 
@@ -22,7 +21,7 @@ public class PerformanceCounters{
 
     public void tick(){
         final long t = Time.nanos();
-        if(lastTick > 0L) tick((t - lastTick) * nano2seconds);
+        if(lastTick > 0L) tick((t - lastTick) / Time.nanosPerSecond);
         lastTick = t;
     }
 

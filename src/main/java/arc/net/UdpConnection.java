@@ -15,7 +15,7 @@ import arc.util.pooling.ByteBufferPool;
  * @author Nathan Sweet <misc@n4te.com>
  */
 @SuppressWarnings("resource")
-class UdpConnection implements Disposable{
+public class UdpConnection implements Disposable{
     InetSocketAddress connectedAddress;
     DatagramChannel datagramChannel;
     int keepAliveMillis = 19000;

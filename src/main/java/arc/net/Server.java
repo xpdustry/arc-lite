@@ -28,7 +28,7 @@ public class Server implements EndPoint{
 
     private final IntMap<Connection> connectionsMap = new IntMap<>();
     private final Seq<Connection> connections = new Seq<>(false);
-    private Connection[] stales = null; // Used to thread-safely remove a connection
+    private volatile Connection[] stales = null; // Used to thread-safely remove a connection
     private final ObjectMap<InetSocketAddress, Connection> udpAddressToConnection = new ObjectMap<>();
     private final IntMap<Connection> pendingConnections = new IntMap<>();
     private final Rand rand = new Rand();
@@ -177,7 +177,7 @@ public class Server implements EndPoint{
         synchronized(updateLock){}
 
         clearStales(); // Clear any staling connections
-        if (!waitForSelect(timeout)) {
+        if (!select(timeout)) {
             updateConnections();
             return;
         }
@@ -217,7 +217,7 @@ public class Server implements EndPoint{
         updateConnections();
     }
 
-    boolean waitForSelect(int timeout) throws IOException {
+    boolean select(int timeout) throws IOException {
         long startTime = Time.nanos();
         int select = timeout > 0 ? selector.select(timeout) : selector.selectNow();
         if(select == 0){
@@ -238,7 +238,7 @@ public class Server implements EndPoint{
         }
     }
 
-    boolean doSelectTCP(SelectionKey selectionKey, Connection fromConnection) throws IOException {
+    protected boolean doSelectTCP(SelectionKey selectionKey, Connection fromConnection) throws IOException {
         int ops = selectionKey.readyOps();
         UdpConnection udp = this.udp;
 
@@ -294,7 +294,7 @@ public class Server implements EndPoint{
         return true;
     }
 
-    void doSelectUDP(SelectionKey selectionKey, Connection fromConnection, InetSocketAddress fromAddress) throws IOException {
+    protected void doSelectUDP(SelectionKey selectionKey, Connection fromConnection, InetSocketAddress fromAddress) throws IOException {
         UdpConnection udp = this.udp;
 
         // Drop object
@@ -667,11 +667,12 @@ public class Server implements EndPoint{
 
     // I don't care about deprecation here, as the socket system methods won't be removed
     // it really doesn't matter if the multicast works or not
-    protected class DiscoveryReceiver{
+    @SuppressWarnings("deprecation")
+    public class DiscoveryReceiver{
         MulticastSocket socket = null;
         Thread multicastThread;
 
-        void close(){
+        public void close(){
             try{
                 if(multicastThread != null) multicastThread.interrupt();
                 if(socket == null) return;
@@ -682,7 +683,7 @@ public class Server implements EndPoint{
             }
         }
 
-        void start(){
+        public void start(){
             multicastThread = Threads.daemon("Server Multicast Discovery", () -> {
                 try{
                     socket = new MulticastSocket(multicastPort);

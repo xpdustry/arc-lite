@@ -271,7 +271,7 @@ public class Client extends Connection implements EndPoint{
         }
     }
 
-    void doSelect(SelectionKey selectionKey) throws IOException{
+    protected void doSelect(SelectionKey selectionKey) throws IOException{
         int ops = selectionKey.readyOps();
         UdpConnection udp = this.udp;
 
@@ -445,7 +445,7 @@ public class Client extends Connection implements EndPoint{
     }
 
     private void broadcast(int udpPort, DatagramSocket socket) throws IOException{
-        ByteBuffer data = ByteBufferPool.getHeap(16);
+        ByteBuffer data = ByteBufferPool.getDirect(16);
         try{
             serialization.write(data, FrameworkMessage.discoverHost);
             data.flip();
@@ -499,7 +499,7 @@ public class Client extends Connection implements EndPoint{
 
         //multicast
         discoverExecutor.submit(() -> {
-            ByteBuffer data = ByteBufferPool.getHeap(16);
+            ByteBuffer data = ByteBufferPool.getDirect(16);
             try(DatagramSocket socket = new DatagramSocket()){
                 serialization.write(data, FrameworkMessage.discoverHost);
                 data.flip();

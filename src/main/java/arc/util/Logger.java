@@ -113,7 +113,6 @@ public class Logger{
         String format(Logger context, LogLevel level, String[] topics);
     }
 
-
     public static class DefaultLoggerHandler implements LoggerHandler{
         public LogHandler delegate;
 

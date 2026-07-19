@@ -40,7 +40,7 @@ public class Pools{
     public static <T> Pool<T> get(Class<T> type, Prov<T> supplier, int capacity){
         Pool<T> pool = getPool(type);
         if(pool == null){
-            pool = new Pool<T>(capacity){
+            pool = new Pool<>(capacity){
                 @Override
                 protected T newObject(){
                     return supplier.get();
@@ -69,15 +69,12 @@ public class Pools{
         return get(type, supplier).obtain();
     }
 
-    /**
-     * Frees an object from the {@link #get(Class, Prov) pool}.
-     * @return {@code false} if no pool has been created for this object, or if its pool is full
-     */
-    public static boolean free(Object object){
+    /** Frees an object from the {@link #get(Class, Prov) pool}. */
+    public static void free(Object object){
         if(object == null) throw new IllegalArgumentException("Object cannot be null.");
         Pool pool = getPool(object.getClass());
-        if(pool == null) return false; // Ignore freeing an object that was never retained.
-        return pool.free(object);
+        if(pool == null) return; // Ignore freeing an object that was never retained.
+        pool.free(object);
     }
 
     /**

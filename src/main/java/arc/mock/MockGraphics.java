@@ -11,8 +11,7 @@ import arc.*;
  */
 @Deprecated
 public class MockGraphics extends Graphics{
-    @Deprecated
-    Application app;
+    private Application app;
 
     @Deprecated
     public MockGraphics(Application app){

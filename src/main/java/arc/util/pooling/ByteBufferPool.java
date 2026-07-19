@@ -53,9 +53,9 @@ public final class ByteBufferPool {
   protected final Function<Integer, Pool<ByteBuffer>> newBucket;
   public final int factor, bucketCap;
 
-  /** Creates a buffer pool with a default {@link #factor} of {@code 1024} and a {@link #bucketCap} of {@code 512}. */
+  /** Creates a buffer pool with a default {@link #factor} and {@link #bucketCap} of {@code 1024}. */
   public ByteBufferPool() {
-    this(1024, 512);
+    this(1024, 1024);
   }
 
   public ByteBufferPool(int factor, int bucketCap) {
@@ -67,20 +67,20 @@ public final class ByteBufferPool {
   }
 
   protected ConcurrentHashMap<Integer, Pool<ByteBuffer>> getBuckets(boolean direct) {
-      return direct ? directs : heaps;
+    return direct ? directs : heaps;
   }
 
   protected int toFactor(int bucket) {
-      return bucket * factor;
+    return bucket * factor;
   }
 
   protected ByteBuffer newBuffer(boolean direct, int capacity) {
-      return direct ? ByteBuffer.allocateDirect(capacity) : ByteBuffer.allocate(capacity);
+    return direct ? ByteBuffer.allocateDirect(capacity) : ByteBuffer.allocate(capacity);
   }
 
   /** @return the bucket fitting the given {@code size} according to the {@link #factor}. */
   public int bucketOf(int size) {
-      return (size + factor - 1) / factor;
+    return (size + factor - 1) / factor;
   }
 
   public ByteBuffer obtain(int size) {
@@ -112,7 +112,7 @@ public final class ByteBufferPool {
    */
   public boolean release(ByteBuffer buf) {
     if (buf == null || buf.capacity() <= 0 || buf.capacity() % factor != 0) return false;
-    return getBuckets(buf.isDirect()).computeIfAbsent(buf.capacity(), newBucket).free(buf);
+    return getBuckets(buf.isDirect()).computeIfAbsent(buf.capacity(), newBucket).offer(buf);
   }
 
   /** Fill a {@code bucket} completely. */
@@ -130,7 +130,7 @@ public final class ByteBufferPool {
     int bucketSize = toFactor(bucket);
     Pool<ByteBuffer> b = getBuckets(direct).computeIfAbsent(bucketSize, newBucket);
     for (int i=0; i<size; i++) {
-      if (!b.free(newBuffer(direct, bucketSize))) return;
+      if (!b.offer(newBuffer(direct, bucketSize))) return;
     }
   }
 
@@ -157,11 +157,11 @@ public final class ByteBufferPool {
   }
 
   public boolean has(int bucket) {
-      return has(bucket, false);
+    return has(bucket, false);
   }
 
   /** @return whether a pool has been created for the specified {@code bucket}. */
   public boolean has(int bucket, boolean direct) {
-      return bucket > 0 && getBuckets(direct).containsKey(toFactor(bucket));
+    return bucket > 0 && getBuckets(direct).containsKey(toFactor(bucket));
   }
 }

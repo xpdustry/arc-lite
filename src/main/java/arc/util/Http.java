@@ -21,8 +21,7 @@ public class Http{
 
     /** @return a new GET HttpRequest that must be configured & submitted. */
     public static HttpRequest get(String url){
-        if(url == null) throw new NullPointerException("url cannot be null.");
-        return new HttpRequest(HttpMethod.GET).url(url);
+        return request(HttpMethod.GET, url);
     }
 
     /** Creates and submits a HTTP GET request. */
@@ -35,9 +34,24 @@ public class Http{
         get(url).error(error).submit(callback);
     }
 
+    /** Creates and submits a blocking HTTP GET request. */
+    public static void getSync(String url, ConsT<HttpResponse, Exception> callback){
+        get(url).block(callback);
+    }
+
+    /** Creates and submits a blocking HTTP GET request, with an error handler. */
+    public static void getSync(String url, ConsT<HttpResponse, Exception> callback, Cons<Throwable> error){
+        get(url).error(error).block(callback);
+    }
+
     /** @return a new POST HttpRequest that must be configured & submitted. */
     public static HttpRequest post(String url){
-        return post(url, (String)null);
+        return request(HttpMethod.POST, url);
+    }
+
+    /** @return a new POST HttpRequest that must be configured & submitted. */
+    public static HttpRequest post(String url, String content){
+        return post(url).content(content);
     }
 
     /** Creates and submits a HTTP POST request. */
@@ -45,10 +59,19 @@ public class Http{
         post(url).submit(callback);
     }
 
-    /** @return a new POST HttpRequest that must be configured & submitted. */
-    public static HttpRequest post(String url, String content){
-        if(url == null) throw new NullPointerException("url cannot be null.");
-        return new HttpRequest(HttpMethod.POST).url(url).content(content);
+    /** Creates and submits a HTTP POST request, with an error handler. */
+    public static void post(String url, ConsT<HttpResponse, Exception> callback, Cons<Throwable> error){
+        post(url).error(error).submit(callback);
+    }
+
+    /** Creates and submits a blocking HTTP POST request. */
+    public static void postSync(String url, ConsT<HttpResponse, Exception> callback){
+        post(url).block(callback);
+    }
+
+    /** Creates and submits a blocking HTTP POST request, with an error handler. */
+    public static void postSync(String url, ConsT<HttpResponse, Exception> callback, Cons<Throwable> error){
+        post(url).error(error).block(callback);
     }
 
     public static class HttpResponse{
@@ -241,7 +264,7 @@ public class Http{
 
         /** Submits this request asynchronously. */
         public void submit(ConsT<HttpResponse, Exception> success){
-            Http.exec.submit(() -> block(success));
+            exec.submit(() -> block(success));
         }
 
         /** Blocks until this request is done. */
@@ -324,9 +347,9 @@ public class Http{
     @SuppressWarnings("serial")
     public static class HttpStatusException extends RuntimeException{
         /** The 4xx or 5xx error code. */
-        public HttpStatus status;
+        public final HttpStatus status;
         /** The response that was sent along with the status code. */
-        public HttpResponse response;
+        public final HttpResponse response;
 
         public HttpStatusException(String message, HttpStatus status, HttpResponse response){
             super(message);
@@ -439,13 +462,9 @@ public class Http{
         ORIGIN_UNAVAILABLE(530),
         ;
 
-        private static final IntMap<HttpStatus> byCode = new IntMap<>();
-
-        static {
-            for (HttpStatus status : values()) {
-                byCode.put(status.code, status);
-            }
-        }
+        private static final HttpStatus[] all = values();
+        private static final IntMap<HttpStatus> byCode = new IntMap<>(all.length);
+        static { Structs.each(s -> byCode.put(s.code, s), all); }
 
         public final int code;
 
@@ -456,6 +475,18 @@ public class Http{
         /** Find an HTTP status enum by code. */
         public static HttpStatus byCode(int code){
             return byCode.get(code, UNKNOWN_STATUS);
+        }
+
+        public static HttpStatus byIndex(int index){
+            return index < 0 || index > all.length ? UNKNOWN_STATUS : all[index];
+        }
+
+        public static HttpStatus byName(String name){
+            try{
+                return valueOf(name);
+            }catch(Exception ignored){
+                return UNKNOWN_STATUS;
+            }
         }
     }
 }
