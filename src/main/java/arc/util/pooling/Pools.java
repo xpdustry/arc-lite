@@ -40,7 +40,7 @@ public class Pools{
     public static <T> Pool<T> get(Class<T> type, Prov<T> supplier, int capacity){
         Pool<T> pool = getPool(type);
         if(pool == null){
-            pool = new Pool<>(capacity){
+            pool = new Pool<T>(capacity){
                 @Override
                 protected T newObject(){
                     return supplier.get();
