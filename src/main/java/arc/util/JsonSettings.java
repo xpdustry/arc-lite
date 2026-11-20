@@ -383,6 +383,16 @@ public class JsonSettings implements Autosaver.Saveable {
     modified = true;
   }
 
+  /** JS compatibility method. */
+  public void putInt(String name, int value) {
+    put(name, value);
+  }
+
+  /** JS compatibility method. */
+  public void putFloat(String name, float value) {
+    put(name, value);
+  }
+
   public <T> T get(String name, Class<T> type, Prov<T> def) {
     return get(name, type, null, null, def);
   }
@@ -465,7 +475,8 @@ public class JsonSettings implements Autosaver.Saveable {
   }
 
   public boolean getBool(String name, boolean def) {
-    return getOrPut(name, Boolean.class, def);
+    Boolean value = getOrPut(name, Boolean.class, def);
+    return value == null ? def : value;
   }
 
   public String getString(String name, String def) {
@@ -505,6 +516,11 @@ public class JsonSettings implements Autosaver.Saveable {
     boolean val = getBool(name);
     if (!val) put(name, true);
     return !val;
+  }
+
+  /** Toggles a boolean value. */
+  public void toggle(String name) {
+    put(name, !getBool(name));
   }
 
   /** @return {@code null} if not found */

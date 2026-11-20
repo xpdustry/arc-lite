@@ -1215,7 +1215,7 @@ public class Json{
             if(type == boolean.class || type == Boolean.class) return (T)Boolean.valueOf(string);
             if(type == char.class || type == Character.class) return (T)(Character)string.charAt(0);
             if(type == CharSequence.class) return (T)string;
-            throw new SerializationException("Unable to convert value to required type: " + jsonData + " (" + type.getName() + ")");
+            throw new SerializationException("Unable to convert '" + jsonData + "' to " + (type.isArray() ? type.getComponentType() + "[]" : type.getName()));
         }
 
         return null;
@@ -1250,8 +1250,12 @@ public class Json{
         Class<T> type = getClass(className);
         if(type == null){
             try{
-                type = (Class<T>)Class.forName(className);
-                if(Timer.class.isAssignableFrom(type)) throw new RuntimeException("Invalid class type.");
+                type = (Class<T>)Class.forName(className, false, getClass().getClassLoader());
+                if(JsonSerializable.class.isAssignableFrom(type) || AllowSerialization.class.isAssignableFrom(type)
+                    || type == String.class || type == Long.class || type == Integer.class || type == Short.class || type == Byte.class|| type == Boolean.class || type == Character.class){
+                    return type;
+                }
+                throw new SerializationException("Class must implement JsonSerializable or AllowSerialization: " + className);
             }catch(Throwable ex){
                 throw new SerializationException(ex);
             }
@@ -1370,7 +1374,7 @@ public class Json{
         public @Nullable Class keyType;
 
         public FieldMetadata(Field field){
-            boolean isMap = ObjectMap.class.isAssignableFrom(field.getType()) || Map.class.isAssignableFrom(field.getType());
+            boolean isMap = ObjectMap.class.isAssignableFrom(field.getType()) || Map.class.isAssignableFrom(field.getType()) || ArrayMap.class.isAssignableFrom(field.getType());
 
             this.field = field;
             this.elementType = getElementType(field, isMap ? 1 : 0);

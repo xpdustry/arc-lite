@@ -6,10 +6,10 @@ import arc.net.FrameworkMessage.Ping;
 import arc.util.Disposable;
 import arc.util.Time;
 
-import java.io.IOException;
-import java.net.Socket;
+import java.io.*;
 import java.net.*;
-import java.nio.channels.SocketChannel;
+import java.nio.*;
+import java.nio.channels.*;
 
 /**
  * Represents a TCP and optionally a UDP connection between a {@link Client} and a {@link Server}.
@@ -94,6 +94,23 @@ public class Connection implements Disposable{
     }
 
     /**
+     * Sends a pre-serialized, length-prefixed buffer over TCP.
+     * Note that this cannot use a raw buffer like UDP, it must contain length!
+     * @return The number of bytes sent, 0 on error.
+     */
+    public int sendTCPBuffer(ByteBuffer buffer){
+        if(buffer == null) throw new IllegalArgumentException("buffer cannot be null.");
+
+        try{
+            return tcp.sendBuffer(buffer);
+        }catch(IOException | ArcNetException ex){
+            close(DcReason.error);
+            ArcNet.handleError(ex);
+            return 0;
+        }
+    }
+
+    /**
      * Sends the object over the network using UDP.
      * @return The number of bytes sent.
      * @throws IllegalStateException if this connection was not opened with both TCP and UDP.
@@ -111,6 +128,29 @@ public class Connection implements Disposable{
         try{
             if(address == null) throw new SocketException("Connection is closed.");
             return udp.send(object, address);
+        }catch(IOException | ArcNetException ex){
+            close(DcReason.error);
+            ArcNet.handleError(ex);
+            return 0;
+        }
+    }
+
+    /**
+     * Sends a pre-serialized buffer over UDP.
+     * @return The number of bytes sent, 0 on error.
+     */
+    public int sendUDPBuffer(ByteBuffer buffer){
+        if(buffer == null) throw new IllegalArgumentException("buffer cannot be null.");
+        SocketAddress address = udpRemoteAddress;
+        if(address == null && udp != null)
+            address = udp.connectedAddress;
+        if(address == null && isConnected)
+            throw new IllegalStateException("Connection is not connected via UDP.");
+
+        try{
+            if(address == null) throw new SocketException("Connection is closed.");
+
+            return udp.sendBuffer(buffer, address);
         }catch(IOException | ArcNetException ex){
             close(DcReason.error);
             ArcNet.handleError(ex);
@@ -203,7 +243,7 @@ public class Connection implements Disposable{
     }
 
     /**
-     * Adds a listener to the connection.
+     * Adds a listener to the connection, after existing listeners.
      * If the listener already exists, it is not added again.
      * @param listener The listener to add.
      */

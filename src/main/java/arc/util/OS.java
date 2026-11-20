@@ -24,9 +24,7 @@ public class OS{
     /** Java version as a single number; 0 on iOS or Android. Examples: 8, 10, 17 */
     public static final int javaVersionNumber = OS.isAndroid || OS.isIos ? 0 :
         javaVersion.startsWith("1.") ? 8 :
-        javaVersion.contains(".") ?
-        Strings.parseInt(javaVersion.substring(0, javaVersion.indexOf('.')), 8) :
-        Strings.parseInt(javaVersion, 8);
+        Strings.parseInt(javaVersion.replaceAll("^(\\d+).*", "$1"), 8);
 
     public static boolean isWindows = propNoNull("os.name").contains("Windows");
     public static boolean isLinux = propNoNull("os.name").contains("Linux") || propNoNull("os.name").contains("BSD");
@@ -35,6 +33,8 @@ public class OS{
     public static boolean isAndroid = false;
     public static boolean isARM = propNoNull("os.arch").startsWith("arm") || propNoNull("os.arch").startsWith("aarch64");
     public static boolean is64Bit = propNoNull("os.arch").contains("64") || propNoNull("os.arch").startsWith("armv8");
+    public static boolean isMobile;
+    public static boolean isDesktop;
 
     static{
         if(propNoNull("java.runtime.name").contains("Android Runtime") || propNoNull("java.vm.vendor").contains("The Android Project") || propNoNull("java.vendor").contains("The Android Project")){
@@ -53,6 +53,8 @@ public class OS{
             isMac = false;
             is64Bit = false;
         }
+        isMobile = isAndroid || isIos;
+        isDesktop = !isMobile;
     }
 
     public static String getAppDataDirectoryString(String appname){

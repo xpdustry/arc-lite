@@ -191,7 +191,7 @@ public class Http{
         public ObjectMap<String, String> headers = new ObjectMap<>();
         /**The time to wait for the HTTP request to be processed, use 0 to block until it is done. The timeout is used for both
          * the timeout when establishing TCP connection, and the timeout until the first byte of data is received.*/
-        public int timeout = 2000;
+        public int timeout = 8000;
 
         /**The content to be used in the HTTP request: A string encoded in the corresponding Content-Encoding set in the headers, with the data to send with the
          * HTTP request. For example, in case of HTTP GET, the content is used as the query string of the GET while on a
@@ -386,6 +386,7 @@ public class Http{
         PARTIAL_CONTENT(206),
         MULTI_STATUS(207),
         ALREADY_REPORTED(208),
+        IM_USED(226),
 
         //3xx - redirects
         MULTIPLE_CHOICES(300),
@@ -430,7 +431,11 @@ public class Http{
         PRECONDITION_REQUIRED(428),
         TOO_MANY_REQUESTS(429),
         WOULD_BLOCK(430), //sure of that?
+        REQUEST_HEADER_FIELDS_TOO_LARGE(431),
+        /** @deprecated Use {@link #REQUEST_HEADER_FIELDS_TOO_LARGE} instead. */
+        @Deprecated
         HEADER_FIELDS_TOO_LARGE(431),
+        UNAVAILABLE_FOR_LEGAL_REASONS(451),
         // Nginx
         REQUEST_HEADER_TOO_LARGE(494),
         SSL_CERTIFICATE_ERROR(495),      // These are ambiguous with 525 and 526
@@ -449,6 +454,9 @@ public class Http{
         INSUFFICIENT_STORAGE(507),
         LOOP_DETECTED(508),
         BANDWIDTH_LIMIT_EXCEEDED(509),
+        NOT_EXTENDED(510),
+        /** @deprecated Typo, use {@link #NOT_EXTENDED} instead. */
+        @Deprecated
         NOT_EXTENTED(510),
         NETWORK_AUTHENTICATION_REQUIRED(511),
         // Cloudflare
@@ -464,7 +472,8 @@ public class Http{
 
         private static final HttpStatus[] all = values();
         private static final IntMap<HttpStatus> byCode = new IntMap<>(all.length);
-        static { Structs.each(s -> byCode.put(s.code, s), all); }
+        // Deprecated aliases are declared after their replacement, so keep the first status found for a code
+        static { Structs.each(s -> { if(!byCode.containsKey(s.code)) byCode.put(s.code, s); }, all); }
 
         public final int code;
 

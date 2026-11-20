@@ -11,6 +11,7 @@ import java.nio.charset.*;
 import java.security.*;
 import java.util.*;
 import java.util.regex.*;
+import java.util.zip.*;
 
 public class Strings{
     public static final Charset utf8 = Charset.forName("UTF-8");
@@ -676,11 +677,12 @@ public class Strings{
                 ++i;
             }
 
+            long multmin = limit / radix;
             long result;
             int digit;
             for(result = 0L; i < end; result -= digit){
                 digit = Character.digit(s.charAt(i++), radix);
-                if(digit < 0){
+                if(digit < 0 || result < multmin){
                     return defaultValue;
                 }
 
@@ -716,30 +718,65 @@ public class Strings{
             start = 1;
             sign = -1;
         }
+        if(start >= end) return defaultValue;
 
         int dot = -1, e = -1;
+        int dotCount = 0, eCount = 0;
         for(int i = start; i < end; i++){
             char c = value.charAt(i);
-            if(c == '.') dot = i;
-            if(c == 'e' || c == 'E') e = i;
+            if(c == '.'){ dot = i; dotCount++; }
+            if(c == 'e' || c == 'E'){ e = i; eCount++; }
+        }
+        if(dotCount > 1 || eCount > 1) return defaultValue;
+        if(dot != -1 && e != -1 && dot > e) return defaultValue;
+
+        int mantissaEnd = (e != -1) ? e : end;
+
+        long exponent = 0;
+        if(e != -1){
+            if(e + 1 >= end) return defaultValue;
+            exponent = parseLong(value, 10, e + 1, end, Long.MIN_VALUE);
+            if(exponent == Long.MIN_VALUE) return defaultValue;
         }
 
         if(dot != -1 && dot < end){
             //negation as first character
             long whole = start == dot ? 0 : parseLong(value, 10, start, dot, Long.MIN_VALUE);
-            if(whole == Long.MIN_VALUE) return defaultValue;
-            long dec = parseLong(value, 10, dot + 1, end, Long.MIN_VALUE);
+            if(whole == Long.MIN_VALUE || whole < 0) return defaultValue;
+
+            int decDigits = mantissaEnd - (dot + 1);
+            if(decDigits == 0){
+                return whole * Math.pow(10, exponent) * sign;
+            }
+
+            //a long holds 18 decimal digits safely, and a double can't represent more precision than that anyway
+            int used = Math.min(decDigits, 18);
+            long dec = parseLong(value, 10, dot + 1, dot + 1 + used, Long.MIN_VALUE);
             if(dec < 0) return defaultValue;
-            return (whole + Math.copySign(dec / Math.pow(10, (end - dot - 1)), whole)) * sign;
+
+            //truncated digits still have to be valid digits
+            for(int i = dot + 1 + used; i < mantissaEnd; i++){
+                char c = value.charAt(i);
+                if(c < '0' || c > '9') return defaultValue;
+            }
+
+            double pow = Math.pow(10, used);
+            long p = (long)pow;
+            double mantissa;
+            if(whole <= (Long.MAX_VALUE - dec) / p){
+                //fits in a long, keeps the original (more accurate) path
+                mantissa = (whole * p + dec) / pow;
+            }else{
+                mantissa = whole + dec / pow;
+            }
+            return mantissa * Math.pow(10, exponent) * sign;
         }
 
         //check scientific notation
         if(e != -1){
             long whole = parseLong(value, 10, start, e, Long.MIN_VALUE);
             if(whole == Long.MIN_VALUE) return defaultValue;
-            long power = parseLong(value, 10, e + 1, end, Long.MIN_VALUE);
-            if(power == Long.MIN_VALUE) return defaultValue;
-            return whole * Math.pow(10, power) * sign;
+            return whole * Math.pow(10, exponent) * sign;
         }
 
         //parse as standard integer
@@ -748,32 +785,22 @@ public class Strings{
     }
 
     public static boolean canParseFloat(String s){
-        try{
-            Float.parseFloat(s);
-            return true;
-        }catch(Exception e){
-            return false;
-        }
+        return parseFloat(s, Float.NEGATIVE_INFINITY) != Float.NEGATIVE_INFINITY;
     }
 
     public static boolean canParsePositiveFloat(String s){
-        try{
-            return Float.parseFloat(s) >= 0;
-        }catch(Exception e){
-            return false;
-        }
+        return parseFloat(s) >= 0f;
     }
 
     /** Returns Float.NEGATIVE_INFINITY if parsing failed. */
     public static float parseFloat(String s){
-        return parseFloat(s, Float.MIN_VALUE);
+        return parseFloat(s, Float.NEGATIVE_INFINITY);
     }
-    public static float parseFloat(String s, float defaultValue){
-        try{
-            return Float.parseFloat(s);
-        }catch(Exception e){
-            return defaultValue;
-        }
+
+
+    /** Faster float parser that doesn't throw exceptions. */
+    public static float parseFloat(String value, float defaultValue){
+        return (float)parseDouble(value, defaultValue);
     }
 
     /** Returns a new, blank color if parsing failed. */
@@ -783,12 +810,38 @@ public class Strings{
 
     public static Color parseColor(String s, Color defaultValue){
         Color col = Colors.get(s);
-        try{
-            if(col == null) col = Color.valueOf(s);
-        }catch(Exception e){
-            col = defaultValue;
-        }
+        if(col == null) col = parseColorOrNull(new Color(), s);
+        if(col == null) return defaultValue;
         return col;
+    }
+
+    public static @Nullable Color parseColorOrNull(Color color, String hex){
+        if(hex == null || hex.isEmpty()) return null;
+
+        int offset = hex.charAt(0) == '#' ? 1 : 0;
+
+        int len = hex.length() - offset;
+        if(len != 6 && len != 8) return null;
+
+        int r = parseHex(hex, offset, offset + 2);
+        int g = parseHex(hex, offset + 2, offset + 4);
+        int b = parseHex(hex, offset + 4, offset + 6);
+        int a = len != 8 ? 255 : parseHex(hex, offset + 6, offset + 8);
+
+        if(r < 0 || g < 0 || b < 0 || a < 0) return null;
+
+        return color.set(r / 255f, g / 255f, b / 255f, a / 255f);
+    }
+
+    private static int parseHex(String string, int from, int to){
+        int total = 0;
+        for(int i = from; i < to; i++){
+            char c = string.charAt(i);
+            int digit = Character.digit(c, 16);
+            if(digit < 0) return -1;
+            total += digit * (i == from ? 16 : 1);
+        }
+        return total;
     }
 
     public static String autoFixed(float value, int max){
@@ -941,6 +994,16 @@ public class Strings{
     public static boolean matches(String src, Boolf<Character> predicate){
         for(int i = 0, n = src.length(); i < n; i++){
             if(!predicate.get(src.charAt(i))) return false;
+        }
+        return true;
+    }
+
+
+    private static boolean isDigitsOnly(String part){
+        for(int i = 0; i < part.length(); i++){
+            if(!Character.isDigit(part.charAt(i))){
+                return false;
+            }
         }
         return true;
     }
@@ -1184,5 +1247,100 @@ public class Strings{
         }
 
         return builder.toString();
+    }
+
+
+    /**
+     * Strips leading/trailing non-numeric, non-dot characters, normalizes a loose version string (e.g. "v1", "2.0", "alpha 2.0.0 release") into an array.
+     * This can handle semver, but is adapted for a maximum of 4 components, since people do that for some reason.
+     * @return the parsed {major, minor, patch, build} array, or null upon failure.
+     */
+    public static @Nullable int[] sanitizeVersion(String raw){
+        if(raw == null){
+            return null;
+        }
+        String trimmed = raw.trim();
+        //strip leading chars until first digit
+        int start = 0;
+        while(start < trimmed.length() && !Character.isDigit(trimmed.charAt(start))){
+            start++;
+        }
+        //strip trailing chars after last digit
+        int end = trimmed.length() - 1;
+        while(end >= 0 && !Character.isDigit(trimmed.charAt(end))){
+            end--;
+        }
+        if(start > end){
+            return null; //no digits at all
+        }
+        String core = trimmed.substring(start, end + 1);
+        String[] parts = core.split("\\.", -1);
+        if(parts.length < 1 || parts.length > 4){
+            return null;
+        }
+        int[] nums = new int[4]; //major, minor, patch, build
+        for(int i = 0; i < 4; i++){
+            if(i < parts.length){
+                String part = parts[i];
+                if(part.isEmpty() || !isDigitsOnly(part)){
+                    return null;
+                }
+                nums[i] = Strings.parseInt(part);
+                if(nums[i] == Integer.MIN_VALUE) return null;
+            }
+        }
+        return nums;
+    }
+
+    /** @return true if semver {@param version} > {@param target}. If either parameter is not a valid (or sanitizable) semver string, just returns (version != target). */
+    public static boolean checkNewerSemver(String version, String target){
+        if(version == null || target == null) return false;
+
+        int[] versionNums = sanitizeVersion(version);
+        int[] targetNums = sanitizeVersion(target);
+        if(versionNums == null || targetNums == null){
+            return !version.equals(target);
+        }
+        for(int i = 0; i < 4; i++){
+            if(versionNums[i] != targetNums[i]){
+                return versionNums[i] > targetNums[i];
+            }
+        }
+        return false;
+    }
+
+    public static byte[] deflate(String str){
+        try{
+            Deflater deflater = new Deflater();
+            deflater.setInput(str.getBytes(utf8));
+            deflater.finish();
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            byte[] buffer = new byte[1024];
+            while(!deflater.finished()){
+                int count = deflater.deflate(buffer);
+                out.write(buffer, 0, count);
+            }
+            deflater.end();
+            return out.toByteArray();
+        }catch(Exception e){
+            throw new RuntimeException(e);
+        }
+    }
+
+    public static String undeflate(byte[] bytes){
+        try{
+            Inflater inflater = new Inflater();
+            inflater.setInput(bytes);
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            byte[] buffer = new byte[1024];
+            while(!inflater.finished()){
+                int count = inflater.inflate(buffer);
+                out.write(buffer, 0, count);
+            }
+            inflater.end();
+            return new String(out.toByteArray(), utf8);
+        }catch(Exception e){
+            throw new RuntimeException(e);
+        }
     }
 }
