@@ -5,15 +5,21 @@ import arc.util.*;
 import arc.util.io.*;
 
 import java.io.*;
+import java.util.Arrays;
 
 /**
  * Lightweight UBJSON parser.<br>
  * <br>
  * The default behavior is to parse the JSON into a DOM containing {@link JsonValue} objects. Extend this class and override
  * methods to perform event driven parsing. When this is done, the parse methods will return null. <br>
+ * <br>
+ * To limit allocations, strings are decoded from a reused buffer. So an instance is not thread-safe.
  * @author Xoppa
  */
 public class UBJsonReader implements BaseJsonReader{
+    private static final byte[] empty = {};
+    protected static final int trustedStringSize = 1 << 16, maxRetainedBuffer = 1 << 16;
+    private byte[] buffer = empty;
 
     /**
      * Parses the UBJSON from the given stream. <br>
@@ -45,12 +51,22 @@ public class UBJsonReader implements BaseJsonReader{
         try{
             return parse(din, din.readByte());
         }finally{
+            releaseBuffer();
             Streams.close(din);
         }
     }
 
     public JsonValue parseWihoutClosing(final DataInputStream din) throws IOException{
-        return parse(din, din.readByte());
+        try{
+            return parse(din, din.readByte());
+        }finally{
+            releaseBuffer();
+        }
+    }
+
+    /** Don't keep a big buffer after reading a big string. */
+    protected void releaseBuffer(){
+        if(buffer.length > maxRetainedBuffer) buffer = empty;
     }
 
     protected JsonValue parse(final DataInputStream din, final byte type) throws IOException{
@@ -107,7 +123,7 @@ public class UBJsonReader implements BaseJsonReader{
         }
         JsonValue prev = null;
         long c = 0;
-        while(din.available() > 0 && type != ']'){
+        while(type != ']'){
             final JsonValue val = parse(din, type);
             val.parent = result;
             if(prev != null){
@@ -142,7 +158,7 @@ public class UBJsonReader implements BaseJsonReader{
         }
         JsonValue prev = null;
         long c = 0;
-        while(din.available() > 0 && type != '}'){
+        while(type != '}'){
             final String key = parseString(din, true, type);
             final JsonValue child = parse(din, valueType == 0 ? din.readByte() : valueType);
             child.setName(key);
@@ -173,6 +189,7 @@ public class UBJsonReader implements BaseJsonReader{
             final JsonValue val = parse(din, dataType);
             val.parent = result;
             if(prev != null){
+                val.prev = prev;
                 prev.next = val;
                 result.size++;
             }else{
@@ -227,13 +244,26 @@ public class UBJsonReader implements BaseJsonReader{
         return ((int)din.readShort() & 0xFFFF);
     }
 
+    /** Note: despite the name, this is a signed int32, as specified by UBJSON for the 'l' type. */
     protected long readUInt(final DataInputStream din) throws IOException{
         return ((long)din.readInt());
     }
 
     protected String readString(final DataInputStream din, final long size) throws IOException{
-        final byte[] data = new byte[(int)size];
-        din.readFully(data);
-        return new String(data, Strings.utf8);
+        // Size protection
+        if(size < 0 || size > Integer.MAX_VALUE - 8) throw new IOException("Invalid string length: " + size);
+        final int length = (int)size;
+
+        byte[] buffer = this.buffer;
+        if(buffer.length < length) buffer = this.buffer = new byte[Math.min(length, Math.max(trustedStringSize, buffer.length))];
+        int read = 0;
+        while(read < length){
+            if(read == buffer.length) buffer = this.buffer = Arrays.copyOf(buffer, (int)Math.min(length, buffer.length * 2L));
+            int n = din.read(buffer, read, Math.min(buffer.length, length) - read);
+            if(n < 0) throw new EOFException("Unexpected end of data, " + (length - read) + " bytes of string remaining.");
+            read += n;
+        }
+
+        return new String(buffer, 0, length, Strings.utf8);
     }
 }

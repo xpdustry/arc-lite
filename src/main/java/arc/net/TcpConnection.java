@@ -1,5 +1,3 @@
-
-
 package arc.net;
 
 import java.io.IOException;
@@ -16,18 +14,19 @@ import arc.util.pooling.ByteBufferPool;
  */
 @SuppressWarnings("resource")
 public class TcpConnection implements Disposable{
-    SocketChannel socketChannel;
+    volatile SocketChannel socketChannel;
     int keepAliveMillis = 8000;
     final ByteBuffer readBuffer, writeBuffer;
     int timeoutMillis = 12000;
     float idleThreshold = 0.1f;
 
     final NetSerializer serialization;
-    private SelectionKey selectionKey;
+    private volatile SelectionKey selectionKey;
     private volatile long lastWriteTime, lastReadTime;
     private int currentObjectLength;
     private final Object writeLock = new Object();
     private volatile boolean readPaused, disposed;
+    private volatile SocketChannel connectingChannel;
 
     public TcpConnection(NetSerializer serialization, int writeBufferSize, int objectBufferSize, boolean direct){
         this.serialization = serialization;
@@ -37,7 +36,7 @@ public class TcpConnection implements Disposable{
     }
 
     public SelectionKey accept(Selector selector, SocketChannel socketChannel) throws IOException{
-        checkDisposed();
+        if(disposed) throw new SocketException("Connection is disposed.");
         writeBuffer.clear();
         readBuffer.clear();
         readBuffer.flip();
@@ -61,7 +60,7 @@ public class TcpConnection implements Disposable{
     }
 
     public void connect(Selector selector, SocketAddress remoteAddress, int timeout) throws IOException{
-        checkDisposed();
+        if(disposed) throw new SocketException("Connection is disposed.");
         close();
         writeBuffer.clear();
         readBuffer.clear();
@@ -69,42 +68,65 @@ public class TcpConnection implements Disposable{
         currentObjectLength = 0;
         readPaused = false;
 
+        SocketChannel socketChannel = null;
         try{
-            SocketChannel socketChannel = selector.provider().openSocketChannel();
+            socketChannel = selector.provider().openSocketChannel();
+            connectingChannel = socketChannel;
             Socket socket = socketChannel.socket();
             socket.setTcpNoDelay(true);
             // socket.setTrafficClass(IPTOS_LOWDELAY);
             socket.connect(remoteAddress, timeout); // Connect using blocking mode for simplicity.
             socketChannel.configureBlocking(false);
             this.socketChannel = socketChannel;
+            connectingChannel = null;
 
             selectionKey = socketChannel.register(selector, SelectionKey.OP_READ);
             selectionKey.attach(this);
 
             lastReadTime = lastWriteTime = Time.millis();
-        }catch(IOException ex){
+        }catch(IOException | RuntimeException ex){
+            connectingChannel = null;
+            if(socketChannel != null){
+                try{
+                    socketChannel.close();
+                }catch(IOException ignored){}
+            }
             close();
+            if(ex instanceof RuntimeException) throw (RuntimeException)ex;
             throw new IOException("Unable to connect to: " + remoteAddress, ex);
         }
     }
 
-    public Object readObject() throws IOException{
-        checkDisposed();
-        SocketChannel socketChannel = checkConnected();
-        if(readPaused) return null; // ensure
+    /**
+     * Read socket to the {@link #readBuffer}. Then, use {@link #readObject()} to decode the packets.
+     * @return whether bytes have been read.
+     */
+    public boolean readSocket() throws IOException{
+        SocketChannel socketChannel = this.socketChannel;
+        if(socketChannel == null || readPaused) return false;
+
+        readBuffer.compact();
+        int bytesRead;
+        try{
+            bytesRead = socketChannel.read(readBuffer);
+        }catch(ClosedChannelException ex){
+            return false; // Closed by another thread while reading
+        }finally{
+            readBuffer.flip();
+        }
+        if(bytesRead == -1) throw new SocketException("Connection is closed.");
+        if(bytesRead == 0) return false;
+        lastReadTime = Time.millis();
+        return true;
+    }
+
+    /** @return {@code null} if no complete object is available, or if the connection is closed. */
+    public Object readObject(){
+        if(disposed || socketChannel == null) return null;
 
         if(currentObjectLength == 0){
-            // Read the length of the next object from the socket.
             int lengthLength = serialization.getLengthLength();
-            if(readBuffer.remaining() < lengthLength){
-                readBuffer.compact();
-                int bytesRead = socketChannel.read(readBuffer);
-                readBuffer.flip();
-                if(bytesRead == -1) throw new SocketException("Connection is closed.");
-                lastReadTime = Time.millis();
-
-                if(readBuffer.remaining() < lengthLength) return null;
-            }
+            if(readBuffer.remaining() < lengthLength) return null;
             currentObjectLength = serialization.readLength(readBuffer);
 
             if(currentObjectLength <= 0)
@@ -114,16 +136,7 @@ public class TcpConnection implements Disposable{
         }
 
         int length = currentObjectLength;
-        if(readBuffer.remaining() < length){
-            // Fill the tcpInputStream.
-            readBuffer.compact();
-            int bytesRead = socketChannel.read(readBuffer);
-            readBuffer.flip();
-            if(bytesRead == -1) throw new SocketException("Connection is closed.");
-            lastReadTime = Time.millis();
-
-            if(readBuffer.remaining() < length) return null;
-        }
+        if(readBuffer.remaining() < length) return null;
         currentObjectLength = 0;
 
         int startPosition = readBuffer.position();
@@ -134,7 +147,7 @@ public class TcpConnection implements Disposable{
             object = serialization.read(readBuffer);
         }catch(Exception ex){
             throw new ArcNetException("Error during deserialization.", ex);
-        }finally {
+        }finally{
             readBuffer.limit(oldLimit);
         }
 
@@ -148,78 +161,84 @@ public class TcpConnection implements Disposable{
 
     public void writeOperation() throws IOException{
         synchronized(writeLock){
-            if(writeToSocket()){
-                // Write successful, clear OP_WRITE.
-                selectionKey.interestOps(readPaused ? 0 : SelectionKey.OP_READ);
+            if(socketChannel == null) return;
+            try{
+                if(writeToSocket()){
+                    // Write successful, clear OP_WRITE.
+                    setInterestOps(readPaused ? 0 : SelectionKey.OP_READ);
+                }
+            }catch(IOException ex){
+                // Closed by another thread in the meantime
+                if(socketChannel == null) return;
+                throw ex;
             }
             lastWriteTime = Time.millis();
         }
     }
 
+    /** Must be called while holding {@link #writeLock}. */
     private boolean writeToSocket() throws IOException{
-        checkDisposed();
         SocketChannel socketChannel = checkConnected();
 
         ByteBuffer buffer = writeBuffer;
         buffer.flip();
-        while(buffer.hasRemaining()){
-            if(socketChannel.write(buffer) == 0) break;
+        try{
+            while(buffer.hasRemaining()){
+                if(socketChannel.write(buffer) == 0) break;
+            }
+        }finally{
+            buffer.compact();
         }
-        buffer.compact();
 
         return buffer.position() == 0;
     }
 
     /** This method is thread safe. */
     public int send(Object object) throws IOException{
-        checkDisposed();
-        checkConnected();
         synchronized(writeLock){
+            checkConnected();
+
             int start = writeBuffer.position();
-            int lengthLength = serialization.getLengthLength();
+            write(serialization, writeBuffer, object);
+            int length = writeBuffer.position() - start;
 
-            try{
-                // Leave room for length.
-                writeBuffer.position(writeBuffer.position() + lengthLength);
-
-                // Write data.
-                serialization.write(writeBuffer, object);
-            }catch(Throwable ex){
-                throw new ArcNetException("Error serializing object of type: " + object.getClass().getName(), ex);
-            }
-            int end = writeBuffer.position();
-
-            // Write data length.
-            writeBuffer.position(start);
-            serialization.writeLength(writeBuffer, end - lengthLength - start);
-            writeBuffer.position(end);
-
-            // Write to socket if no data was queued.
-            if(start == 0 && !writeToSocket()){
-                // A partial write, set OP_WRITE to be notified when more
-                // writing can occur.
-                selectionKey.interestOps((readPaused ? 0 : SelectionKey.OP_READ) | SelectionKey.OP_WRITE);
-            }else{
-                // Full write, wake up selector so idle event will be fired.
-                selectionKey.selector().wakeup();
-            }
-
-            lastWriteTime = Time.millis();
-            return end - start;
+            flushSend(start);
+            return length;
         }
+    }
+
+    /**
+     * Writes the object prefixed by its length, from the position of the buffer.
+     * @throws ArcNetException if the object can't be serialized.
+     */
+    protected static void write(NetSerializer serialization, ByteBuffer buffer, Object object){
+        int start = buffer.position(), lengthLength = serialization.getLengthLength();
+        try{
+            // Leave room for length.
+            buffer.position(start + lengthLength);
+            serialization.write(buffer, object);
+        }catch(Throwable ex){
+            throw new ArcNetException("Error serializing object of type: " + object.getClass().getName(), ex);
+        }
+        int end = buffer.position();
+        buffer.position(start);
+        serialization.writeLength(buffer, end - lengthLength - start);
+        buffer.position(end);
     }
 
     /**
      * Writes a pre-serialized, length-prefixed buffer directly into this connection's write buffer.
      * Note that this cannot use a raw buffer like UDP, it must contain length!
+     * <p>
+     * The buffer is rewound before being written, and its position is modified,
+     * so the same buffer must not be sent by multiple threads at the same time.
      */
     public int sendBuffer(ByteBuffer buffer) throws IOException{
-        SocketChannel socketChannel = this.socketChannel;
-        if(socketChannel == null) throw new SocketException("Connection is closed.");
         synchronized(writeLock){
+            checkConnected();
+
             buffer.rewind();
             int length = buffer.remaining();
-
             int start = writeBuffer.position();
             if(length > writeBuffer.remaining()){
                 throw new ArcNetException("Bulk buffer too large for write buffer: " + length + " > " + writeBuffer.remaining());
@@ -227,39 +246,63 @@ public class TcpConnection implements Disposable{
             writeBuffer.put(buffer);
             int end = writeBuffer.position();
 
-            if(start == 0 && !writeToSocket()){
-                selectionKey.interestOps(SelectionKey.OP_READ | SelectionKey.OP_WRITE);
-            }else{
-                selectionKey.selector().wakeup();
-            }
-
-            lastWriteTime = System.currentTimeMillis();
+            flushSend(start);
             return end - start;
+        }
+    }
+
+    /** Must be called while holding {@link #writeLock}. */
+    private void flushSend(int start) throws IOException{
+        // Write to socket if no data was queued.
+        if(start == 0 && !writeToSocket())
+            setInterestOps((readPaused ? 0 : SelectionKey.OP_READ) | SelectionKey.OP_WRITE);
+        SelectionKey key = selectionKey;
+        if(key != null) key.selector().wakeup();
+
+        lastWriteTime = Time.millis();
+    }
+
+    private void setInterestOps(int ops) throws SocketException{
+        SelectionKey key = selectionKey;
+        if(key == null) throw new SocketException("Connection is closed.");
+        try{
+            key.interestOps(ops);
+        }catch(CancelledKeyException ex){
+            throw new SocketException("Connection is closed.");
         }
     }
 
     public void close(){
         readPaused = false;
+        // Interrupt #connect()
+        SocketChannel connecting = connectingChannel;
+        if(connecting != null){
+            connectingChannel = null;
+            try{
+                connecting.close();
+            }catch(IOException ignored){}
+        }
+
+        SocketChannel socketChannel = this.socketChannel;
         if(socketChannel == null) return;
+        this.socketChannel = null;
         try{
             socketChannel.close();
-            socketChannel = null;
-            if(selectionKey != null) selectionKey.selector().wakeup();
         }catch(IOException ignored){}
-    }
-
-    private void checkDisposed() throws IOException{
-        if(disposed) throw new SocketException("Connection is disposed.");
+        SelectionKey key = selectionKey;
+        if(key != null) key.selector().wakeup();
     }
 
     @Override
     public void dispose(){
-        if(disposed) return;
-        disposed = true;
-        close();
-        selectionKey = null;
-        ByteBufferPool.free(readBuffer);
-        ByteBufferPool.free(writeBuffer);
+        synchronized(writeLock){
+            if(disposed) return;
+            disposed = true;
+            close();
+            selectionKey = null;
+            ByteBufferPool.free(readBuffer);
+            ByteBufferPool.free(writeBuffer);
+        }
     }
 
     @Override
@@ -269,20 +312,24 @@ public class TcpConnection implements Disposable{
 
     /**
      * Pause/resume reading. Does nothing if not connected.
+     * Objects already received are still delivered.
      * Be aware that pausing for too long can lead to a timeout.
      */
     public void pauseReading(boolean paused){
         if(socketChannel == null) return;
         synchronized(writeLock){
-            if(readPaused == paused || selectionKey == null) return;
+            SelectionKey key = selectionKey;
+            if(readPaused == paused || key == null) return;
             readPaused = paused;
-            int ops = selectionKey.interestOps();
-            selectionKey.interestOps(paused ? (ops & ~SelectionKey.OP_READ) : (ops | SelectionKey.OP_READ));
-            selectionKey.selector().wakeup();
+            try{
+                int ops = key.interestOps();
+                key.interestOps(paused ? (ops & ~SelectionKey.OP_READ) : (ops | SelectionKey.OP_READ));
+                key.selector().wakeup();
+            }catch(CancelledKeyException ignored){} // Connection closed
         }
     }
 
-    public boolean isReadingPaused() {
+    public boolean isReadingPaused(){
         return readPaused;
     }
 
@@ -294,7 +341,7 @@ public class TcpConnection implements Disposable{
         return socketChannel != null && timeoutMillis > 0 && time - lastReadTime > timeoutMillis;
     }
 
-    private SocketChannel checkConnected() throws IOException {
+    private SocketChannel checkConnected() throws IOException{
         SocketChannel channel = socketChannel;
         if(channel == null) throw new SocketException("Connection is closed.");
         return channel;

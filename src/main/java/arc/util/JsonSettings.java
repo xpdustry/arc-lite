@@ -165,7 +165,8 @@ public class JsonSettings implements Autosaver.Saveable {
       if (error != null) Log.err("Failed to load settings file, attempting to load backup: @", error.toString());
       try {
         loadValues(backupFile());
-        // Copy back the file
+        // Rename the original, so the user can know what happened, and copy back the file
+        if (exists()) moveCorrupted(file());
         backupFile().copyTo(file());
         Log.info("Loaded backup settings file successfully!");
       } catch (Throwable e) {
@@ -206,8 +207,6 @@ public class JsonSettings implements Autosaver.Saveable {
 
   public synchronized void loadValues(Fi file) {
     try {
-      simple.clear();
-
       boolean compressed = false;
       if (!plainJson) {
         //read the first few bytes to check if it is compressed.
@@ -222,6 +221,7 @@ public class JsonSettings implements Autosaver.Saveable {
 
       if (content != null) {
         for (JsonValue child=content.child, last=null; child!=null; last=child, child=child.next) {
+          simple.remove(child.name);
           values.put(child.name, child);
 
           // unlink values
@@ -242,7 +242,7 @@ public class JsonSettings implements Autosaver.Saveable {
 
           builder.object();
           for (OrderedMap.Entry<String, JsonValue> e : values)
-            builder.set(e.key, simple.get(e.key, e.value));
+            builder.set(e.key, e.value != null ? e.value : simple.get(e.key));
           builder.close();
 
           if (compressed) builder.getJson().toJson(writer, JsonWriter.OutputType.json);
@@ -258,8 +258,8 @@ public class JsonSettings implements Autosaver.Saveable {
 
           writer.object();
           for (OrderedMap.Entry<String, JsonValue> e : values) {
-            // This is needed because #value() with a JsonValue is another method
-            if (simple.containsKey(e.key)) writer.set(e.key, simple.get(e.key));
+            // This is needed because #value() with a JsonValue is another method.
+            if (e.value == null) writer.set(e.key, simple.get(e.key));
             else {
               e.value.name = null; //in case of
               writer.name(e.key).value(e.value);
@@ -270,11 +270,20 @@ public class JsonSettings implements Autosaver.Saveable {
       }
 
     } catch (Throwable e) {
-      // Rename the file, like that the user know the file causing issues, and we can load a backup, if possible, next time.
-      file.moveTo(file.parent().child(file.nameWithoutExtension() + "_corrupted-" + System.currentTimeMillis() +
-                                      file.extension()));
+      moveCorrupted(file);
       throw new RuntimeException("Error writing file: " + file, e);
     }
+  }
+
+  /**
+   * Rename the file, like that the user know the file causing issues,
+   * and we can load a backup, if possible, next time.
+   */
+  protected void moveCorrupted(Fi file) {
+    String extension = file.extension();
+    String newName = file.nameWithoutExtension() + "_corrupted-" + System.currentTimeMillis();
+    if (!extension.isEmpty()) newName += "." + extension;
+    file.moveTo(file.parent().child(newName));
   }
 
   /** @return whether the file exists or not. */
@@ -305,6 +314,7 @@ public class JsonSettings implements Autosaver.Saveable {
   /** Clears all preference values. */
   public synchronized void clear() {
     values.clear();
+    simple.clear();
     modified = true;
   }
 
@@ -326,6 +336,7 @@ public class JsonSettings implements Autosaver.Saveable {
 
   public synchronized void remove(String name) {
     values.remove(name);
+    simple.remove(name);
     modified = true;
   }
 
@@ -367,6 +378,7 @@ public class JsonSettings implements Autosaver.Saveable {
       return;
     } else if (value instanceof JsonValue) {
       values.put(name, (JsonValue)value);
+      simple.remove(name); // in case of type change
       modified = true;
       return;
     }
@@ -383,12 +395,14 @@ public class JsonSettings implements Autosaver.Saveable {
     modified = true;
   }
 
-  /** JS compatibility method. */
+  /** @deprecated use {@link #put(String, Object)} instead. */
+  @Deprecated
   public void putInt(String name, int value) {
     put(name, value);
   }
 
-  /** JS compatibility method. */
+  /** @deprecated use {@link #put(String, Object)} instead. */
+  @Deprecated
   public void putFloat(String name, float value) {
     put(name, value);
   }
@@ -413,15 +427,17 @@ public class JsonSettings implements Autosaver.Saveable {
   protected synchronized <T, K, E> T get(String name, Class<T> type, Class<E> elementType, Class<K> keyType) {
     // Use the already decoded value when possible
     boolean contains = simple.containsKey(name);
+    JsonValue value = values.get(name);
     if (contains) {
       Object o = simple.get(name);
       //check for inferred types?
-      if (o == null || o.getClass() == type) return (T)o;
-    } else if (type == JsonValue.class)
-      return (T)values.get(name);
+      if (o == null || type == null || type.isInstance(o)) return (T)o;
+      if (value == null) value = JsonWriterBuilder.toJsonValue(o);
+    }
+    if (type == JsonValue.class) return (T)value;
 
     T result;
-    try { result = json.readValue(type, elementType, keyType, values.get(name)); }
+    try { result = json.readValue(type, elementType, keyType, value); }
     catch (Throwable e) { throw new RuntimeException(e); }
 
     // Store primitive, null and JsonValue values directly when possible
@@ -459,19 +475,23 @@ public class JsonSettings implements Autosaver.Saveable {
   }
 
   public float getFloat(String name, float def) {
-    return getOrPut(name, Float.class, def);
+    Float value = getOrPut(name, Float.class, def);
+    return value == null ? def : value;
   }
 
   public double getDouble(String name, double def) {
-    return getOrPut(name, Double.class, def);
+    Double value = getOrPut(name, Double.class, def);
+    return value == null ? def : value;
   }
 
   public int getInt(String name, int def) {
-    return getOrPut(name, Integer.class, def);
+    Integer value = getOrPut(name, Integer.class, def);
+    return value == null ? def : value;
   }
 
   public long getLong(String name, long def) {
-    return getOrPut(name, Long.class, def);
+    Long value = getOrPut(name, Long.class, def);
+    return value == null ? def : value;
   }
 
   public boolean getBool(String name, boolean def) {
@@ -484,23 +504,28 @@ public class JsonSettings implements Autosaver.Saveable {
   }
 
   public float getFloat(String name) {
-    return has(name) ? get(name, Float.class) : (float)defaults.get(name, 0f);
+    Float value = has(name) ? get(name, Float.class) : null;
+    return value != null ? value : ((Number)defaults.get(name, 0)).floatValue();
   }
 
   public double getDouble(String name) {
-    return has(name) ? get(name, Double.class) : (double)defaults.get(name, 0f);
+    Double value = has(name) ? get(name, Double.class) : null;
+    return value != null ? value : ((Number)defaults.get(name, 0)).doubleValue();
   }
 
   public int getInt(String name) {
-    return has(name) ? get(name, Integer.class) : (int)defaults.get(name, 0);
+    Integer value = has(name) ? get(name, Integer.class) : null;
+    return value != null ? value : ((Number)defaults.get(name, 0)).intValue();
   }
 
   public long getLong(String name) {
-    return has(name) ? get(name, Long.class) : (long)defaults.get(name, 0f);
+    Long value = has(name) ? get(name, Long.class) : null;
+    return value != null ? value : ((Number)defaults.get(name, 0)).longValue();
   }
 
   public boolean getBool(String name) {
-    return has(name) ? get(name, Boolean.class) : (boolean)defaults.get(name, false);
+    Boolean value = has(name) ? get(name, Boolean.class) : null;
+    return value != null ? value : (Boolean)defaults.get(name, false);
   }
 
   /** Runs the specified code once, and never again. */
@@ -518,9 +543,14 @@ public class JsonSettings implements Autosaver.Saveable {
     return !val;
   }
 
-  /** Toggles a boolean value. */
-  public void toggle(String name) {
-    put(name, !getBool(name));
+  /**
+   * Toggles a boolean value.
+   * @return the previous value.
+   */
+  public synchronized boolean toggle(String name) {
+    boolean val = getBool(name);
+    put(name, !val);
+    return val;
   }
 
   /** @return {@code null} if not found */

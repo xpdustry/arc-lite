@@ -26,6 +26,7 @@ import java.nio.channels.Selector;
 import java.util.*;
 
 import arc.struct.ObjectSet;
+import arc.util.Reflect;
 
 
 public class NioUtils {
@@ -114,8 +115,17 @@ public class NioUtils {
   private static class CompatibleObjectSet<T> extends ObjectSet<T> implements Set<T> {
     public CompatibleObjectSet() {}
     public int size() { return size; }
-    public Object[] toArray() { return super.toSeq().items; }
-    public <E> E[] toArray(E[] a) { return (E[])toArray(); }
+    public Object[] toArray() { return toArray(new Object[size]); }
+    public <E> E[] toArray(E[] a) {
+      int i = 0, size = this.size;
+      E[] out = a.length >= size ? a : Reflect.newArray(a, size);
+      for (T t : this) {
+        if (i >= size) break;
+        out[i++] = (E)t;
+      }
+      if (out.length > i) out[i] = null;
+      return out;
+    }
     public boolean add(Object e) { return super.add((T)e); }
     public boolean remove(Object key) { return super.remove((T)key); }
     public boolean contains(Object key) { return super.contains((T)key); }

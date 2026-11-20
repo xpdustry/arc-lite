@@ -1,7 +1,8 @@
 package arc.util.pooling;
 
+import java.util.concurrent.ConcurrentHashMap;
+
 import arc.struct.Seq;
-import arc.struct.ObjectMap;
 import arc.func.Prov;
 
 /**
@@ -10,26 +11,9 @@ import arc.func.Prov;
  */
 @SuppressWarnings({"unchecked", "rawtypes"})
 public class Pools{
-    private static final ObjectMap<Class, Pool> typePools = new ObjectMap<>();
-    private static volatile boolean updating;
+    private static final ConcurrentHashMap<Class, Pool> typePools = new ConcurrentHashMap<>();
 
     private Pools(){
-    }
-
-    /** Will block if a pool is updating, as map is not thread-safe. */
-    private static <T> Pool<T> getPool(Class<T> type){
-        if(!updating) return typePools.get(type);
-        synchronized(typePools){
-            return typePools.get(type);
-        }
-    }
-
-    private static <T> void putPool(Class<T> type, Pool<T> pool){
-        updating = true;
-        synchronized(typePools){
-            typePools.put(type, pool);
-            updating = false;
-        }
     }
 
     /**
@@ -38,30 +22,33 @@ public class Pools{
      * if this is not the first time this pool has been requested.
      */
     public static <T> Pool<T> get(Class<T> type, Prov<T> supplier, int capacity){
-        Pool<T> pool = getPool(type);
+        Pool<T> pool = typePools.get(type);
         if(pool == null){
-            pool = new Pool<>(capacity){
+            Pool<T> newPool = new Pool<T>(capacity){
                 @Override
                 protected T newObject(){
                     return supplier.get();
                 }
             };
-            putPool(type, pool);
+            // Another thread may have created the pool in the meantime
+            pool = typePools.putIfAbsent(type, newPool);
+            if(pool == null) pool = newPool;
         }
         return pool;
     }
 
     /**
      * Returns a new or existing pool for the specified type, stored in a Class to {@link Pool} map.
-     * The pool capacity will be 1024.
+     * The pool capacity will be 4096.
      */
     public static <T> Pool<T> get(Class<T> type, Prov<T> supplier){
-        return get(type, supplier, 1024);
+        return get(type, supplier, 4096);
     }
 
     /** Sets an existing pool for the specified type, stored in a Class to {@link Pool} map. */
     public static <T> void set(Class<T> type, Pool<T> pool){
-        putPool(type, pool);
+        if(pool == null) throw new IllegalArgumentException("pool cannot be null.");
+        typePools.put(type, pool);
     }
 
     /** Obtains an object from the {@link #get(Class, Prov) pool}. */
@@ -72,7 +59,7 @@ public class Pools{
     /** Frees an object from the {@link #get(Class, Prov) pool}. */
     public static void free(Object object){
         if(object == null) throw new IllegalArgumentException("Object cannot be null.");
-        Pool pool = getPool(object.getClass());
+        Pool pool = typePools.get(object.getClass());
         if(pool == null) return; // Ignore freeing an object that was never retained.
         pool.free(object);
     }
@@ -97,7 +84,7 @@ public class Pools{
         for(int i = 0, n = objects.size; i < n; i++){
             Object object = objects.get(i);
             if(object == null) continue;
-            pool = getPool(object.getClass());
+            pool = typePools.get(object.getClass());
             if(pool == null) continue; // Ignore freeing an object that was never retained.
             if (samePool) {
                 pool.freeAll(objects);

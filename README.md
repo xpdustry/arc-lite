@@ -13,7 +13,7 @@ repositories {
 Add the framework to your project dependencies *(the versioning follows Arc's one)*:
 ```gradle
 dependencies {
-  implementation 'com.xpdustry:arc-lite:v158.1'
+  implementation 'com.xpdustry:arc-lite:v160.6'
 }
 ```
 And you can use the API the same way as Arc. The main package is ``arc``.

@@ -230,8 +230,14 @@ public class ObjectMap<K, V> implements Iterable<ObjectMap.Entry<K, V>>{
         return val;
     }
 
-    /** Returns the value for the specified key, or null if the key is not in the map. */
+    /** Same as {@link #get(Object)}, which now also returns {@code null} for a null key. */
+    public @Nullable V getNull(K key){
+        return get(key);
+    }
+
+    /** Returns the value for the specified key, or null if the key is not in the map or is null. */
     public @Nullable <T extends K> V get(T key){
+        if(key == null) return null;
         int i = locateKey(key);
         return i < 0 ? null : valueTable[i];
     }
@@ -245,6 +251,7 @@ public class ObjectMap<K, V> implements Iterable<ObjectMap.Entry<K, V>>{
 
     /** Returns the value for the removed key, or null if the key is not in the map. */
     public @Nullable V remove(K key){
+        if(key == null) return null;
         int i = locateKey(key);
         if(i < 0) return null;
         K[] keyTable = this.keyTable;
@@ -329,7 +336,7 @@ public class ObjectMap<K, V> implements Iterable<ObjectMap.Entry<K, V>>{
     }
 
     public boolean containsKey(K key){
-        return locateKey(key) >= 0;
+        return key != null && locateKey(key) >= 0;
     }
 
     /**

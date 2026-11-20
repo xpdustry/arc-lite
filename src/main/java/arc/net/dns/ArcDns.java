@@ -42,6 +42,12 @@ public final class ArcDns{
     }
 
     public static void refreshNameservers(){
+        synchronized(nameservers){
+            refreshNameservers0();
+        }
+    }
+
+    private static void refreshNameservers0(){
         nameservers.clear();
 
         if(Core.app != null){
@@ -73,7 +79,12 @@ public final class ArcDns{
      * with the list of nameservers from {@link #getNameservers()}.
      */
     public static Seq<SRVRecord> getSrvRecords(String domain){
-        for(InetSocketAddress nameserver : nameservers){
+        // Safe iteration
+        InetSocketAddress[] servers;
+        synchronized(nameservers){
+            servers = nameservers.toArray(InetSocketAddress.class);
+        }
+        for(InetSocketAddress nameserver : servers){
             try{
                 return getSrvRecords(domain, nameserver);
             }catch(IOException ignored){
@@ -155,10 +166,13 @@ public final class ArcDns{
                         for(int j = 0; j < len; j++) builder.append((char)in.readByte());
                         builder.append('.');
                     }
-                    builder.delete(builder.length() - 1, builder.length());
+                    // The root target "." means that the service is not available
+                    if(builder.length() > 0) builder.setLength(builder.length() - 1);
 
                     records.add(new SRVRecord(ttl, priority, weight, port, builder.toString()));
                 }
+            }catch(RuntimeException e){
+                throw new IOException("Malformed response from dns server " + nameserver, e);
             }
         }
 

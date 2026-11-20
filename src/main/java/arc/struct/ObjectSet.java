@@ -249,6 +249,7 @@ public class ObjectSet<T> implements Iterable<T>, Eachable<T>{
 
     /** Returns true if the key was removed. */
     public boolean remove(T key){
+        if(key == null) return false;
         int i = locateKey(key);
         if(i < 0) return false;
         T[] keyTable = this.keyTable;
@@ -314,10 +315,11 @@ public class ObjectSet<T> implements Iterable<T>, Eachable<T>{
     }
 
     public boolean contains(T key){
-        return locateKey(key) >= 0;
+        return key != null && locateKey(key) >= 0;
     }
 
     public @Nullable T get(T key){
+        if(key == null) return null;
         int i = locateKey(key);
         return i < 0 ? null : keyTable[i];
     }

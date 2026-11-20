@@ -63,7 +63,7 @@ public final class ByteBufferPool {
     this.directs = new ConcurrentHashMap<>(8);
     this.factor = factor;
     this.bucketCap = bucketCap;
-    this.newBucket = c -> new Pool.NullablePool<>();
+    this.newBucket = c -> new Pool.NullablePool<>(bucketCap);
   }
 
   protected ConcurrentHashMap<Integer, Pool<ByteBuffer>> getBuckets(boolean direct) {
@@ -89,7 +89,8 @@ public final class ByteBufferPool {
 
   /**
    * Get a buffer of the given {@code size} from free pool, or a new one. <br>
-   * Capacity is rounded to the upper {@link #factor}, but limited to the given {@code size}.
+   * Capacity is rounded to the upper {@link #factor}, but limited to the given {@code size}. <br>
+   * Buffer is given cleared and in big endian.
    */
   public ByteBuffer obtain(int size, boolean direct) {
     if (size <= 0) return direct ? EMPTY_DIRECT : EMPTY_HEAP;
@@ -98,10 +99,10 @@ public final class ByteBufferPool {
     ByteBuffer buf = null;
     if (bucket != null) {
       buf = bucket.poll();
-      if (buf != null) buf = (ByteBuffer)buf.clear();
+      if (buf != null) buf = ((ByteBuffer)buf.clear()).order(ByteOrder.BIG_ENDIAN);
     }
     if (buf == null) buf = newBuffer(direct, bucketSize);
-    return (ByteBuffer)buf.order(ByteOrder.nativeOrder()).limit(size);
+    return (ByteBuffer)buf.limit(size);
   }
 
   /**

@@ -1134,7 +1134,6 @@ public class Json{
         if(jsonData.isObject()){
             String className = isTypeNameSet() ? jsonData.getString(typeName, null) : null;
             if(className != null){
-                jsonData.remove(typeName);
                 type = resolveClass(className);
             }
 
@@ -1151,6 +1150,13 @@ public class Json{
             Serializer serializer = findSerializer(type);
             if(serializer != null){
                 return (T)serializer.read(this, jsonData, type, elementType, keytype);
+            }
+
+            if(!jsonData.isObject() && JsonSerializable.class.isAssignableFrom(type)){
+                // A Serializable may be read as an array, string, etc, even though it will be written as an object.
+                Object object = newInstance(type);
+                ((JsonSerializable)object).read(this, jsonData);
+                return (T)object;
             }
 
             if(jsonData.isObject()){
@@ -1251,8 +1257,9 @@ public class Json{
         if(type == null){
             try{
                 type = (Class<T>)Class.forName(className, false, getClass().getClassLoader());
-                if(JsonSerializable.class.isAssignableFrom(type) || AllowSerialization.class.isAssignableFrom(type)
-                    || type == String.class || type == Long.class || type == Integer.class || type == Short.class || type == Byte.class|| type == Boolean.class || type == Character.class){
+                // Simple values are written with their class when the known type is unknown (e.g. Seq<Object>)
+                if(JsonSerializable.class.isAssignableFrom(type) || AllowSerialization.class.isAssignableFrom(type) ||
+                   type == String.class || Reflect.isWrapper(type)){
                     return type;
                 }
                 throw new SerializationException("Class must implement JsonSerializable or AllowSerialization: " + className);
@@ -1278,11 +1285,15 @@ public class Json{
 
     protected <T> T convertFromString(String value, Class type){
         if(value == null) return null;
-        if(type != null){
-            Serializer serializer = findSerializer(type);
-            if(serializer != null) return (T)serializer.fromKey(this, value, type);
-        }
-        return (T)value;
+        if(type == null || type == String.class || type == CharSequence.class || type == Object.class) return (T)value;
+        Serializer serializer = findSerializer(type);
+        if(serializer != null) return (T)serializer.fromKey(this, value, type);
+        return readValue((Class<T>)type, null, new JsonValue(value));
+    }
+
+    /** @return whether the child is the type field, which must be ignored when reading a map. */
+    protected boolean isTypeField(JsonValue child){
+        return isTypeNameSet() && typeName.equals(child.name);
     }
 
     protected static Object newInstance(Class type){
@@ -1359,7 +1370,7 @@ public class Json{
             return String.valueOf(object);
         }
         default T fromKey(Json json, String key, Class type){
-            return (T)key; // =/
+            return read(json, new JsonValue(key), type, null, null);
         }
     }
 
@@ -1374,7 +1385,8 @@ public class Json{
         public @Nullable Class keyType;
 
         public FieldMetadata(Field field){
-            boolean isMap = ObjectMap.class.isAssignableFrom(field.getType()) || Map.class.isAssignableFrom(field.getType()) || ArrayMap.class.isAssignableFrom(field.getType());
+            boolean isMap = ObjectMap.class.isAssignableFrom(field.getType()) || Map.class.isAssignableFrom(field.getType()) ||
+                            ArrayMap.class.isAssignableFrom(field.getType());
 
             this.field = field;
             this.elementType = getElementType(field, isMap ? 1 : 0);
@@ -1444,8 +1456,8 @@ public class Json{
             @Override
             public ObjectSet read(Json json, JsonValue jsonData, Class type, Class elementType, Class keyType){
                 ObjectSet result = type == ObjectSet.class ? new ObjectSet() : (ObjectSet)newInstance(type);
-                if(jsonData.isObject()) jsonData = jsonData.getChild("values");
-                for(JsonValue child = jsonData.child; child != null; child = child.next)
+                JsonValue first = jsonData.isObject() ? jsonData.getChild("values") : jsonData.child;
+                for(JsonValue child = first; child != null; child = child.next)
                     result.add(json.readValue(elementType, null, child));
                 return result;
             }
@@ -1563,8 +1575,10 @@ public class Json{
             @Override
             public ObjectMap read(Json json, JsonValue jsonData, Class type, Class elementType, Class keyType){
                 ObjectMap result = type == ObjectMap.class ? new ObjectMap() : (ObjectMap)newInstance(type);
-                for(JsonValue child = jsonData.child; child != null; child = child.next)
+                for(JsonValue child = jsonData.child; child != null; child = child.next){
+                    if(json.isTypeField(child)) continue;
                     result.put(json.convertFromString(child.name, keyType), json.readValue(elementType, null, child));
+                }
                 return result;
             }
         });
@@ -1583,8 +1597,10 @@ public class Json{
             @Override
             public ObjectIntMap read(Json json, JsonValue jsonData, Class type, Class elementType, Class keyType){
                 ObjectIntMap result = type == ObjectIntMap.class ? new ObjectIntMap() : (ObjectIntMap)newInstance(type);
-                for(JsonValue child = jsonData.child; child != null; child = child.next)
+                for(JsonValue child = jsonData.child; child != null; child = child.next){
+                    if(json.isTypeField(child)) continue;
                     result.put(json.convertFromString(child.name, elementType), child.asInt());
+                }
                 return result;
             }
         });
@@ -1603,8 +1619,10 @@ public class Json{
             @Override
             public ObjectFloatMap read(Json json, JsonValue jsonData, Class type, Class elementType, Class keyType){
                 ObjectFloatMap result = type == ObjectFloatMap.class ? new ObjectFloatMap() : (ObjectFloatMap)newInstance(type);
-                for(JsonValue child = jsonData.child; child != null; child = child.next)
+                for(JsonValue child = jsonData.child; child != null; child = child.next){
+                    if(json.isTypeField(child)) continue;
                     result.put(json.convertFromString(child.name, elementType), child.asFloat());
+                }
                 return result;
             }
         });
@@ -1623,8 +1641,10 @@ public class Json{
             @Override
             public IntMap read(Json json, JsonValue jsonData, Class type, Class elementType, Class keyType){
                 IntMap result = type == IntMap.class ? new IntMap() : (IntMap)newInstance(type);
-                for(JsonValue child = jsonData.child; child != null; child = child.next)
+                for(JsonValue child = jsonData.child; child != null; child = child.next){
+                    if(json.isTypeField(child)) continue;
                     result.put(Integer.parseInt(child.name), json.readValue(elementType, null, child));
+                }
                 return result;
             }
         });
@@ -1644,8 +1664,10 @@ public class Json{
             @Override
             public ArrayMap read(Json json, JsonValue jsonData, Class type, Class elementType, Class keyType){
                 ArrayMap result = type == ArrayMap.class ? new ArrayMap() : (ArrayMap)newInstance(type);
-                for(JsonValue child = jsonData.child; child != null; child = child.next)
+                for(JsonValue child = jsonData.child; child != null; child = child.next){
+                    if(json.isTypeField(child)) continue;
                     result.put(json.convertFromString(child.name, keyType), json.readValue(elementType, null, child));
+                }
                 return result;
             }
         });
@@ -1663,9 +1685,11 @@ public class Json{
 
             @Override
             public Map read(Json json, JsonValue jsonData, Class type, Class elementType, Class keyType){
-                Map result = type == ObjectMap.class ? new HashMap() : (Map)newInstance(type);
-                for(JsonValue child = jsonData.child; child != null; child = child.next)
+                Map result = type.isInterface() ? new HashMap() : (Map)newInstance(type);
+                for(JsonValue child = jsonData.child; child != null; child = child.next){
+                    if(json.isTypeField(child)) continue;
                     result.put(json.convertFromString(child.name, keyType), json.readValue(elementType, null, child));
+                }
                 return result;
             }
         });
@@ -1695,6 +1719,11 @@ public class Json{
                     if(string.equals(json.convertToString(e))) return e;
                 }
                 throw new SerializationException("unknown enum field '" + string + "' for type: " + type.getName());
+            }
+
+            @Override
+            public String toKey(Json json, Enum object, Class knownType){
+                return json.convertToString(object);
             }
         });
     }

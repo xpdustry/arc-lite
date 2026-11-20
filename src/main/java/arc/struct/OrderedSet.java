@@ -47,9 +47,11 @@ public class OrderedSet<T> extends ObjectSet<T>{
      * this set already contains the key, the existing key's index is changed if needed and false is returned.
      */
     public boolean add(T key, int index){
+        if(key == null) return false;
         if(!super.add(key)){
-            int oldIndex = items.indexOf(key, true);
-            if(oldIndex != index) items.insert(index, items.remove(oldIndex));
+            // The key in the set can be another instance (equals() but not ==), so don't search by identity
+            int oldIndex = items.indexOf(key, false);
+            if(oldIndex != -1 && oldIndex != index) items.insert(index, items.remove(oldIndex));
             return false;
         }
         items.insert(index, key);
@@ -194,24 +196,31 @@ public class OrderedSet<T> extends ObjectSet<T>{
             items = set.items;
         }
 
+        @Override
         public void reset(){
+            currentIndex = -1;
             nextIndex = 0;
             hasNext = set.size > 0;
         }
 
+        @Override
         public K next(){
             if(!hasNext) throw new NoSuchElementException();
             if(!valid) throw new ArcRuntimeException("#iterator() cannot be used nested.");
             K key = items.get(nextIndex);
+            currentIndex = nextIndex;
             nextIndex++;
             hasNext = nextIndex < set.size;
             return key;
         }
 
+        @Override
         public void remove(){
-            if(nextIndex < 0) throw new IllegalStateException("next must be called before remove.");
-            nextIndex--;
-            ((OrderedSet)set).removeIndex(nextIndex);
+            if(currentIndex < 0) throw new IllegalStateException("next must be called before remove.");
+            ((OrderedSet<K>)set).removeIndex(currentIndex);
+            nextIndex = currentIndex;
+            currentIndex = -1;
+            hasNext = nextIndex < set.size;
         }
 
         public Seq<K> toSeq(Seq<K> array){

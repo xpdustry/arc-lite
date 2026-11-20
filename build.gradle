@@ -4,7 +4,7 @@ plugins{
 }
 
 group = 'com.xpdustry'
-version = 'v158.1'
+version = 'v160.6'
 
 repositories{
     mavenCentral()

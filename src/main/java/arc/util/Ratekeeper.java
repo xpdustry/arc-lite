@@ -12,7 +12,7 @@ public class Ratekeeper{
      * */
     public boolean allow(long spacing, int cap){
         long now = Time.nanosMillis();
-        if(Time.nanosMillis() - lastTime > spacing){
+        if(now - lastTime > spacing){
             occurences = 0;
             lastTime = now;
         }

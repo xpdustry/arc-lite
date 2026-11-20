@@ -64,6 +64,66 @@ public class Jval{
         return new Hparser(text).parse();
     }
 
+    /** Converts a {@link JsonValue} tree to a {@link Jval} one. */
+    public static Jval fromJsonValue(JsonValue json){
+        switch(json.type()){
+            case object:
+                Jval map = newObject();
+                for(JsonValue j : json) map.add(j.name, fromJsonValue(j));
+                return map;
+            case array:
+                Jval array = newArray();
+                for(JsonValue j : json) array.add(fromJsonValue(j));
+                return array;
+            case stringValue: return valueOf(json.asString());
+            case doubleValue: return valueOf(json.asDouble());
+            case longValue: return valueOf(json.asLong());
+            case booleanValue: return valueOf(json.asBoolean());
+            case nullValue: return NULL;
+        }
+        throw new IllegalArgumentException("Unable to convert to Jval: " + json.type());
+    }
+
+    /** Converts this {@link Jval} tree to a {@link JsonValue} one. */
+    public JsonValue toJsonValue(){
+        if(isNull()) return new JsonValue(JsonValue.ValueType.nullValue);
+        else if(isFloat() || isDouble()) return new JsonValue(asDouble());
+        else if(isNumber()) return new JsonValue(asLong());
+        else if(isString()) return new JsonValue(asString());
+        else if(isBoolean()) return new JsonValue(asBool());
+        else if(isObject()){
+            JsonValue json = new JsonValue(JsonValue.ValueType.object), last = null;
+            for(ObjectMap.Entry<String, Jval> e : asObject()){
+                JsonValue child = e.value.toJsonValue();
+                child.name = e.key;
+                last = link(json, last, child);
+            }
+            return json;
+        }
+        else if(isArray()){
+            JsonValue json = new JsonValue(JsonValue.ValueType.array), last = null;
+            for(Jval j : asArray()) last = link(json, last, j.toJsonValue());
+            return json;
+        }
+        throw new IllegalStateException("Unable to convert to JsonValue. corrupted Jval?");
+    }
+
+    private static JsonValue link(JsonValue parent, JsonValue last, JsonValue child){
+        child.parent = parent;
+        if(last == null) parent.child = child;
+        else{
+            last.next = child;
+            child.prev = last;
+        }
+        parent.size++;
+        return child;
+    }
+
+    /** @return the underlying object. May be a string, number, boolean, JsonArray, JsonMap or null. */
+    public @Nullable Object value(){
+        return value;
+    }
+
     public Jtype getType(){
         return value == null ? Jtype.nil :
                 value instanceof Number ? Jtype.number :
@@ -83,6 +143,10 @@ public class Jval{
     public boolean isObject(){ return value instanceof JsonMap; }
     public boolean isArray(){ return value instanceof JsonArray; }
     public boolean isNumber(){ return value instanceof Number; }
+    public boolean isInt(){ return value instanceof Integer; }
+    public boolean isLong(){ return value instanceof Long; }
+    public boolean isFloat(){ return value instanceof Float; }
+    public boolean isDouble(){ return value instanceof Double; }
     public boolean isString(){ return value instanceof String; }
     public boolean isBoolean(){ return value instanceof Boolean; }
     public boolean isTrue(){ return value == Boolean.TRUE; }
@@ -343,6 +407,11 @@ public class Jval{
         return object != null && object.getClass() == getClass() &&
             ((value == null && ((Jval)object).value == null)
             || (((Jval)object).value != null && value != null && value.equals(((Jval)object).value)));
+    }
+
+    @Override
+    public int hashCode(){
+        return value == null ? 0 : value.hashCode();
     }
 
     /** Alias class of whatever is used to store json maps (objects). */

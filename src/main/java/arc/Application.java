@@ -12,17 +12,23 @@ public interface Application extends Disposable{
 
     /** Adds a new application listener. */
     default void addListener(ApplicationListener listener){
-        getListeners().add(listener);
+        synchronized(getListeners()){
+            getListeners().add(listener);
+        }
     }
 
     /** Removes an application listener. */
     default void removeListener(ApplicationListener listener){
-        post(() -> getListeners().remove(listener));
+        post(() -> {
+            synchronized(getListeners()){
+                getListeners().remove(listener);
+            }
+        });
     }
 
     /** Call this before update() in each backend. */
     default void defaultUpdate(){
-        Core.settings.save();
+        if(Core.settings != null && Core.settings.isAutosaved()) Core.settings.save();
         Time.updateGlobal();
     }
 

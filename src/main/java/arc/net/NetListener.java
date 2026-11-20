@@ -5,7 +5,8 @@ package arc.net;
 import java.util.concurrent.*;
 
 /**
- * Used to be notified about connection events.
+ * Used to be notified about connection events. <br>
+ * Methods called on the update thread must not wait for another, as this can cause deadlocks.
  */
 public interface NetListener{
     /**

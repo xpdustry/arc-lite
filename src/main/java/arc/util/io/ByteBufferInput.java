@@ -20,8 +20,17 @@ public class ByteBufferInput implements DataInput{
         this.buffer = buffer;
     }
 
+    /** @throws BufferUnderflowException if there are not enough bytes. */
     public void readFully(ByteBuffer out) {
-        out.put(buffer);
+        int length = out.remaining();
+        if(buffer.remaining() < length) throw new BufferUnderflowException();
+        int limit = buffer.limit();
+        buffer.limit(buffer.position() + length);
+        try{
+            out.put(buffer);
+        }finally{
+            buffer.limit(limit);
+        }
     }
 
     @Override
@@ -36,8 +45,10 @@ public class ByteBufferInput implements DataInput{
 
     @Override
     public int skipBytes(int i){
-        buffer.position(buffer.position() + i);
-        return i;
+        int n = Math.min(i, buffer.remaining());
+        if(n <= 0) return 0;
+        buffer.position(buffer.position() + n);
+        return n;
     }
 
     @Override

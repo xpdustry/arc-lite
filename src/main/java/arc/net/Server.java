@@ -1,5 +1,6 @@
 package arc.net;
 
+import arc.func.Boolf;
 import arc.func.Cons;
 import arc.math.*;
 import arc.net.FrameworkMessage.*;
@@ -15,6 +16,9 @@ import java.util.*;
 
 /**
  * Manages TCP and optionally UDP connections from many {@linkplain Client Clients}.
+ * <p>
+ * A connection that didn't complete its registration within
+ * its {@linkplain Connection#setTimeout(int) timeout} is closed.
  * @author Nathan Sweet <misc@n4te.com>
  */
 public class Server implements EndPoint{
@@ -24,36 +28,36 @@ public class Server implements EndPoint{
 
     private final Selector selector;
     private int emptySelects;
-    private ServerSocketChannel serverChannel;
-    private UdpConnection udp;
+    private long emptySelectsStart;
+    private volatile ServerSocketChannel serverChannel;
+    private volatile UdpConnection udp;
 
-    private final IntMap<Connection> connectionsMap = new IntMap<>();
-    private final Seq<Connection> connections = new Seq<>(false);
-    private volatile Connection[] stales = null; // Used to thread-safely remove a connection
-    private final ObjectMap<InetSocketAddress, Connection> udpAddressToConnection = new ObjectMap<>();
+    /** Registered connections. Copy-on-write. */
+    private volatile Connection[] connections = {};
+    /** Registered connections by id. Copy-on-write. */
+    private volatile IntMap<Connection> connectionsMap = new IntMap<>();
     private final IntMap<Connection> pendingConnections = new IntMap<>();
+    private final ObjectMap<InetSocketAddress, Connection> udpAddressToConnection = new ObjectMap<>();
+    /** Whether the selected keys have been modified while the update thread iterates them. */
+    private boolean keysChanged;
     private final Rand rand = new Rand();
 
     private volatile boolean shutdown = true, starting;
+    /**
+     * Held by the update thread while it processes the selected keys and the connections,
+     * and by the other threads to bind or close the server.
+     */
     private final Object updateLock = new Object();
-    private Thread updateThread;
+    private volatile Thread updateThread;
 
+    protected int readsPerSelect = 16; // Same as Netty
+    protected boolean allowTcpOnly;
     protected int multicastPort = 21010;
     protected InetAddress multicastGroup;
     protected DiscoveryReceiver discoveryReceiver;
     protected ServerDiscoveryHandler discoveryHandler;
-    private ServerConnectFilter connectFilter;
-
-    private final ByteBuffer bulkWriteBuffer;
-    private final Object bulkWriteLock = new Object();
-
-    protected final DispatchListener dispatchListener = new DispatchListener(){
-        @Override
-        public void disconnected(Connection connection, DcReason reason){
-            addStale(connection);
-            super.disconnected(connection, reason);
-        }
-    };
+    protected ServerConnectFilter connectFilter;
+    protected final DispatchListener dispatchListener = new DispatchListener();
 
     public Server(int writeBufferSize, int objectBufferSize, NetSerializer serializer){
         this(writeBufferSize, objectBufferSize, false, serializer);
@@ -87,9 +91,6 @@ public class Server implements EndPoint{
         this.objectBufferSize = objectBufferSize;
         this.directBuffers = directBuffers;
         this.serializer = serializer;
-
-        bulkWriteBuffer = directBuffers ? ByteBuffer.allocateDirect(writeBufferSize) : ByteBuffer.allocate(writeBufferSize);
-
         this.discoveryHandler = (address, handler) -> handler.respond(ByteBufferPool.getHeap(0));
 
         Selector s;
@@ -105,12 +106,27 @@ public class Server implements EndPoint{
         selector = s;
     }
 
+    /**
+     * Sets the maximum number of reads per select, to avoid a read monopolization.
+     * {@code 0} to disable, {@code 1} for a single read per iteration.
+     */
+    public void readsPerSelect(int maxReads){
+        readsPerSelect = maxReads < 1 ? Integer.MAX_VALUE : maxReads;
+    }
+
+    /**
+     * Sets whether a client can register as TCP only. Otherwise, its connection is closed.
+     */
+    public void allowTcpOnlyConnections(boolean allow){
+        allowTcpOnly = allow;
+    }
+
     public void setMulticast(String group, int multicastPort){
         this.multicastPort = multicastPort;
         try{
             multicastGroup = InetAddress.getByName(group);
         }catch(IOException e){
-            e.printStackTrace(); // rethrow?
+            ArcNet.handleError(e);
         }
     }
 
@@ -146,8 +162,9 @@ public class Server implements EndPoint{
      * @param udpPort May be null.
      */
     public void bind(InetSocketAddress tcpPort, InetSocketAddress udpPort) throws IOException{
-        close();
+        //TODO: safe to lock here? Some JDKs seems to block registration if a select occur while binding.
         synchronized(updateLock){
+            close();
             selector.wakeup();
             try{
                 serverChannel = selector.provider().openServerSocketChannel();
@@ -156,7 +173,8 @@ public class Server implements EndPoint{
                 serverChannel.register(selector, SelectionKey.OP_ACCEPT);
 
                 if(udpPort != null){
-                    udp = new UdpConnection(serializer, objectBufferSize, directBuffers);
+                    UdpConnection udp = new UdpConnection(serializer, objectBufferSize, directBuffers);
+                    this.udp = udp;
                     udp.bind(selector, udpPort);
                 }
 
@@ -164,7 +182,7 @@ public class Server implements EndPoint{
                     discoveryReceiver = new DiscoveryReceiver();
                     discoveryReceiver.start();
                 }
-            }catch(IOException ex){
+            }catch(Exception ex){
                 close();
                 throw ex;
             }
@@ -173,96 +191,64 @@ public class Server implements EndPoint{
 
     /**
      * Accepts any new connections and reads or writes any pending data for the current connections.
+     * Must always be called by the same dedicated thread.
      * @param timeout Wait for up to the specified milliseconds for a connection to be ready to process.
      * May be zero to return immediately if there are no connections to process.
      */
     @Override
     public void update(int timeout) throws IOException{
         updateThread = Thread.currentThread();
-        // Blocks to avoid a select while the selector is used to bind the server connection.
-        synchronized(updateLock){}
+        Set<SelectionKey> keys = select(timeout);
 
-        clearStales(); // Clear any staling connections
-        if (!select(timeout)) {
-            updateConnections();
-            return;
-        }
+        synchronized(updateLock){
+            if(keys != null){
+                keysChanged = false;
+                for(Iterator<SelectionKey> iter = keys.iterator(); !keysChanged && iter.hasNext();){
+                    SelectionKey selectionKey = iter.next();
+                    iter.remove();
 
-        Set<SelectionKey> keys = selector.selectedKeys();
-        synchronized(keys){
-            for(Iterator<SelectionKey> iter = keys.iterator(); iter.hasNext();){
-                SelectionKey selectionKey = iter.next();
-                iter.remove();
-                Connection fromConnection = (Connection)selectionKey.attachment();
-
-                try{
-                    // Possible since connection is already closed?
-                    if(fromConnection != null && isStale(fromConnection)) continue;
-
-                    boolean readUDP = doSelectTCP(selectionKey, fromConnection);
-                    if (!readUDP) continue;
-
-                    InetSocketAddress fromAddress;
                     try{
-                        fromAddress = udp.readFromAddress();
-                    }catch(IOException ex){
-                        ArcNet.handleError(ex);
-                        continue;
+                        doSelect(selectionKey);
+                    }catch(CancelledKeyException ignored){
+                        // Connection closed while processing another key
                     }
-                    if(fromAddress == null) continue;
-                    fromConnection = udpAddressToConnection.get(fromAddress);
-
-                    doSelectUDP(selectionKey, fromConnection, fromAddress);
-                }catch(CancelledKeyException ex){
-                    if(fromConnection != null) fromConnection.close(DcReason.error);
-                    else selectionKey.channel().close();
                 }
             }
-        }
 
-        updateConnections();
+            updateConnections();
+        }
     }
 
-    boolean select(int timeout) throws IOException {
-        long startTime = Time.nanos();
-        int select = timeout > 0 ? selector.select(timeout) : selector.selectNow();
-        if(select == 0){
-            if(++emptySelects == 100){
+    Set<SelectionKey> select(int timeout) throws IOException{
+        if((timeout > 0 ? selector.select(timeout) : selector.selectNow()) == 0){
+            // NIO freaks and returns immediately with 0 sometimes, so try to keep from hogging the CPU.
+            long now = Time.nanos();
+            if(emptySelects++ == 0) emptySelectsStart = now;
+            else if(emptySelects >= 100){
                 emptySelects = 0;
-                // NIO freaks and returns immediately with 0 sometimes, so try to keep from hogging the CPU.
-                long elapsedTime = Time.nanosToMillis(Time.nanos() - startTime);
-                long maxWait = Math.min(25, timeout);
-                try{
-                    // Better yielding or using onSpinWait?
-                    if(elapsedTime < maxWait) Thread.sleep(maxWait - elapsedTime);
-                }catch(InterruptedException ignored){}
+                if(timeout > 0 && now - emptySelectsStart < 2_000_000L){
+                    try{
+                        Thread.sleep(1);
+                    }catch(InterruptedException ignored){}
+                }
             }
-            return false;
-        }else{
-            emptySelects = 0;
-            return true;
-        }
+        }else emptySelects = 0;
+        Set<SelectionKey> keys = selector.selectedKeys();
+        return keys.isEmpty() ? null : keys;
     }
 
-    protected boolean doSelectTCP(SelectionKey selectionKey, Connection fromConnection) throws IOException {
+    protected void doSelect(SelectionKey selectionKey) throws IOException{
+        Connection fromConnection = (Connection)selectionKey.attachment();
         int ops = selectionKey.readyOps();
-        UdpConnection udp = this.udp;
 
         if(fromConnection != null){ // Must be a TCP read or write operation.
             if((ops & SelectionKey.OP_READ) == SelectionKey.OP_READ){
+                TcpConnection tcp = fromConnection.tcp;
                 try{
-                    while(true){
-                        Object object = fromConnection.tcp.readObject();
-                        if(object == null) break;
-                        if(object instanceof RegisterTCP && udp != null && fromConnection.udpRemoteAddress == null){
-                            pendingConnections.remove(fromConnection.getID());
-                            fromConnection.tcpOnly = true;
-                            addConnection(fromConnection);
-                            fromConnection.notifyConnected();
-                            break;
-                        }
-                        fromConnection.notifyReceived(object);
-                    }
+                    int reads = 0;
+                    do{
+                        while(doSelectTCP(fromConnection, tcp));
+                    }while(reads++ < readsPerSelect && tcp.readSocket());
                 }catch(IOException | ArcNetException ex){
                     ArcNet.handleError(new ArcNetException("Error reading TCP from connection: " + fromConnection, ex));
                     fromConnection.close(closeReason(ex.getMessage()));
@@ -276,43 +262,60 @@ public class Server implements EndPoint{
                     fromConnection.close(closeReason(ex.getMessage()));
                 }
             }
-            return false;
+            return;
         }
 
         if((ops & SelectionKey.OP_ACCEPT) == SelectionKey.OP_ACCEPT){
-            ServerSocketChannel serverChannel = this.serverChannel;
-            if(serverChannel == null) return false;
             try{
-                SocketChannel socketChannel = serverChannel.accept();
+                SocketChannel socketChannel = ((ServerSocketChannel)selectionKey.channel()).accept();
                 if(socketChannel != null) acceptOperation(socketChannel);
             }catch(IOException ex){
                 ArcNet.handleError(ex);
             }
-            return false;
+            return;
         }
 
         // Must be a UDP read operation.
-        if(udp == null){
-            selectionKey.channel().close();
-            return false;
+        UdpConnection udp = this.udp;
+        if(udp == null) return; // Closed by another thread
+        for(int i = 0; i < readsPerSelect; i++){
+            InetSocketAddress fromAddress;
+            try{
+                fromAddress = udp.readFromAddress();
+            }catch(IOException ex){
+                ArcNet.handleError(ex);
+                return;
+            }
+            if(fromAddress == null) return;
+            doSelectUDP(udp, udpAddressToConnection.get(fromAddress), fromAddress);
         }
+    }
 
+    protected boolean doSelectTCP(Connection fromConnection, TcpConnection tcp){
+        Object object = tcp.readObject();
+        if (object == null) return false;
+        // Still awaiting its registration, do not accept other packets
+        else if(fromConnection.udp != null && !fromConnection.tcpOnly &&
+                fromConnection.udpRemoteAddress == null){
+            // The client wants TCP only.
+            if(object instanceof RegisterTCP){
+                if(!allowTcpOnly){
+                    fromConnection.close(DcReason.error);
+                    return false;
+                }
+                pendingConnections.remove(fromConnection.getID());
+                fromConnection.tcpOnly = true;
+                addConnection(fromConnection);
+                fromConnection.notifyConnected();
+            }
+        }else if(!(object instanceof RegisterTCP)) fromConnection.notifyReceived(object);
         return true;
     }
 
-    protected void doSelectUDP(SelectionKey selectionKey, Connection fromConnection, InetSocketAddress fromAddress) throws IOException {
-        UdpConnection udp = this.udp;
-
-        // Drop object
-        if(fromConnection != null){
-            if(fromConnection.udpPaused){
-                udp.readBuffer.clear();
-                return;
-            }
-            if(fromConnection.tcpOnly){
-                selectionKey.channel().close(); // Connection was registered as TCP only!
-                return;
-            }
+    protected boolean doSelectUDP(UdpConnection udp, Connection fromConnection, InetSocketAddress fromAddress) throws IOException{
+        if(fromConnection != null && (!fromConnection.isConnected() || fromConnection.udpPaused)){
+            udp.readBuffer.clear();
+            return false;
         }
 
         Object object;
@@ -320,7 +323,7 @@ public class Server implements EndPoint{
             object = udp.readObject();
         }catch(ArcNetException ex){
             ArcNet.handleError(new ArcNetException("Error reading UDP from connection: " + fromAddress, ex));
-            return;
+            return false;
         }
 
         if(object instanceof FrameworkMessage){
@@ -328,101 +331,104 @@ public class Server implements EndPoint{
                 // Store the fromAddress on the connection and reply over TCP
                 // with a RegisterUDP to indicate success.
                 int fromConnectionID = ((RegisterUDP)object).connectionID;
-                Connection connection = pendingConnections.remove(fromConnectionID);
-                if(connection == null || connection.udpRemoteAddress != null) return;
-                // It is illegal to register an UDP connection without the same address as the TCP one
-                // Or connection was registered as TCP only
+                Connection connection = pendingConnections.get(fromConnectionID);
+                if(connection == null) return false;
+                //TODO: remove that, this is not safe.
+                // It is illegal to register an UDP connection without the same address as the TCP one.
+                // The datagram is simply dropped, the connection stays pending until it times out.
                 InetSocketAddress toAddress = connection.getRemoteAddressTCP();
-                if(connection.tcpOnly || toAddress == null || !fromAddress.getAddress().equals(toAddress.getAddress())){
-                    pendingConnections.put(fromConnectionID, connection);
-                    selectionKey.channel().close();
-                    return;
-                }
+                if(toAddress == null || !fromAddress.getAddress().equals(toAddress.getAddress())) return false;
+                pendingConnections.remove(fromConnectionID);
 
                 connection.udpRemoteAddress = fromAddress;
                 addConnection(connection);
                 connection.sendTCP(object);
-                connection.notifyConnected();
-                return;
+                if(connection.isConnected()) connection.notifyConnected();
+                return true;
             }
 
             if(object instanceof DiscoverHost){
                 try{
-                    discoveryHandler.onDiscoverReceived(
-                        fromAddress.getAddress(),
-                        buff -> udp.datagramChannel.send(buff, fromAddress)
-                    );
-                }catch(IOException ignored){}
-                return;
+                    discoveryHandler.onDiscoverReceived(fromAddress.getAddress(), buff -> {
+                        DatagramChannel channel = udp.datagramChannel;
+                        if(channel != null) channel.send(buff, fromAddress);
+                    });
+                }catch(Exception ex){
+                    ArcNet.handleError(ex);
+                }
+                return true;
             }
         }
 
-        if(fromConnection == null) return;
+        if(fromConnection == null) return false;
         fromConnection.notifyReceived(object);
+        return true;
     }
 
     DcReason closeReason(String errMsg){
         return errMsg != null && errMsg.contains("closed") ? DcReason.closed : DcReason.error;
     }
 
-    void updateConnections() {
-        long time = Time.millis();
-        for(int i = 0; i < connections.size; i++){
-            Connection connection = connections.get(i);
-            if(connection.tcp.isTimedOut(time)) connection.close(DcReason.timeout);
-            else if(connection.tcp.needsKeepAlive(time)) connection.sendTCP(FrameworkMessage.keepAlive);
-            if(isStale(connection)) continue; // Avoid more events if its a stale connection
-            if(connection.isIdle()) connection.notifyIdle();
-        }
-    }
-
     public void keepAlive(){
         long time = Time.millis();
-        for(int i = 0; i < connections.size; i++){
-            Connection connection = connections.get(i);
+        Connection[] connections = this.connections;
+        for(Connection connection : connections){
             if(connection.tcp.needsKeepAlive(time)) connection.sendTCP(FrameworkMessage.keepAlive);
         }
     }
 
     @Override
     public void run(){
-        shutdown = starting = false;
-        try {
+        if(!starting) shutdown = false;
+        starting = false;
+        try{
             while(!shutdown){
                 try{
                     update(250);
                 }catch(IOException ex){
+                    ArcNet.handleError(ex);
                     close();
                 }
             }
+        }catch(ClosedSelectorException e){
+            // Disposed by another thread, nothing to do
         }catch(Exception e){
-            close();
+            try{
+                close();
+            }catch(Exception e2){
+                e.addSuppressed(e2);
+            }
             throw e;
-        }finally {
+        }finally{
             shutdown = true;
         }
     }
 
     @Override
     public void start(){
-        if (starting) return;
-        starting = true;
-        // Try to let any previous update thread stop.
-        if(updateThread != null){
-            shutdown = true;
+        Thread thread = updateThread;
+        boolean alive = thread != null && thread.isAlive();
+        if(alive && (!shutdown || thread == Thread.currentThread())){
+            shutdown = false;
+            return;
+        }else if(alive){
+            selector.wakeup();
             try{
-                updateThread.join(5000);
+                thread.join(5000);
             }catch(InterruptedException ignored){}
         }
-        Threads.thread("Server", this);
+
+        starting = true;
+        shutdown = false;
+        updateThread = Threads.thread("Server", this);
     }
 
     @Override
     public void stop(){
         if(shutdown) return;
         close();
-        starting = false;
         shutdown = true;
+        selector.wakeup();
     }
 
     @Override
@@ -437,13 +443,19 @@ public class Server implements EndPoint{
 
     private void acceptOperation(SocketChannel socketChannel){
         if(connectFilter != null){
+            boolean accepted;
             try{
-                String address = ((InetSocketAddress)socketChannel.getRemoteAddress()).getAddress().getHostAddress();
-                if(!connectFilter.accept(address)){
+                accepted = connectFilter.accept((InetSocketAddress)socketChannel.getRemoteAddress());
+            }catch(Exception ex){
+                ArcNet.handleError(ex);
+                accepted = false;
+            }
+            if(!accepted || serverChannel == null){
+                try{
                     socketChannel.close();
-                    return;
-                }
-            }catch(IOException ignored){}
+                }catch(IOException ignored){}
+                return;
+            }
         }
 
         Connection connection = newConnection();
@@ -451,6 +463,7 @@ public class Server implements EndPoint{
         connection.endPoint = this;
         UdpConnection udp = this.udp;
         if(udp != null) connection.udp = udp;
+        else connection.tcpOnly = true; // Without UDP, every connections are TCP only
 
         try{
             SelectionKey selectionKey = connection.tcp.accept(selector, socketChannel);
@@ -458,6 +471,7 @@ public class Server implements EndPoint{
 
             int id = generateId();
             connection.id = id;
+            connection.acceptTime = Time.millis();
             connection.setConnected(true);
             connection.addListener(dispatchListener);
 
@@ -468,9 +482,10 @@ public class Server implements EndPoint{
             registerConnection.connectionID = id;
             connection.sendTCP(registerConnection);
 
-            if(udp == null) connection.notifyConnected();
+            if(udp == null && connection.isConnected()) connection.notifyConnected();
         }catch(IOException ex){
             connection.close(DcReason.error);
+            connection.dispose();
         }
     }
 
@@ -478,8 +493,7 @@ public class Server implements EndPoint{
         int id;
         do{
             id = rand.nextInt();
-        }while(id == 0 || pendingConnections.containsKey(id) ||
-               getConnection(id) != null || isStale(id));
+        }while(id == 0 || isPending(id) || getConnection(id) != null);
         return id;
     }
 
@@ -491,37 +505,41 @@ public class Server implements EndPoint{
         return new Connection();
     }
 
-    private void addStale(Connection con){
-        if(con == null) return;
-        Connection[] stales = this.stales;
-        this.stales = stales == null ? new Connection[] {con} : Structs.add(stales, con);
-    }
-
-    private boolean isStale(Connection con){
-        if(con == null) return false;
-        Connection[] stales = this.stales;
-        return stales != null && Structs.contains(stales, con::equals);
-    }
-
-    private boolean isStale(int connectionID){
-        Connection[] stales = this.stales;
-        if(stales == null) return false;
-        for(Connection connection : stales){
-            if(connection.getID() == connectionID) return true;
+    void updateConnections(){
+        long time = Time.millis();
+        for(Connection connection : connections){
+            // Both false if closed
+            if(connection.tcp.isTimedOut(time)) connection.close(DcReason.timeout);
+            else if(connection.tcp.needsKeepAlive(time)) connection.sendTCP(FrameworkMessage.keepAlive);
+            if(!connection.isConnected()) removeConnection(connection);
+            else if(connection.isIdle()) connection.notifyIdle();
         }
-        return false;
+
+        Seq<Connection> expired = null;
+        for(Iterator<Connection> iter = pendingConnections.values(); iter.hasNext();){
+            Connection connection = iter.next();
+            int timeout = connection.tcp.timeoutMillis;
+            if(!connection.isConnected()){
+                iter.remove();
+                connection.dispose();
+            }else if(timeout > 0 && time - connection.acceptTime > timeout){
+                if(expired == null) expired = new Seq<>();
+                expired.add(connection);
+            }
+        }
+        if(expired != null) expired.each(c -> c.close(DcReason.timeout));
     }
 
-    private void clearStales(){
-        Connection[] stales = this.stales;
-        this.stales = null;
-        if(stales == null) return;
-        Structs.each(this::removeConnection, stales);
+    protected boolean isPending(int connectionID){
+        return pendingConnections.containsKey(connectionID);
     }
 
     protected void addConnection(Connection connection){
-        connections.add(connection);
-        connectionsMap.put(connection.getID(), connection);
+        int id = connection.getID();
+        connections = Structs.add(connections, connection);
+        IntMap<Connection> map = new IntMap<>(connectionsMap);
+        map.put(id, connection);
+        connectionsMap = map;
         if(connection.udpRemoteAddress == null) return;
         udpAddressToConnection.put(connection.udpRemoteAddress, connection);
     }
@@ -529,16 +547,22 @@ public class Server implements EndPoint{
     /** The connection will be disposed, it must not be used after that. */
     protected void removeConnection(Connection connection){
         connection.dispose();
-        connections.remove(connection);
-        connectionsMap.remove(connection.getID());
-        pendingConnections.remove(connection.getID());
-        if(connection.udpRemoteAddress == null) return;
-        udpAddressToConnection.remove(connection.udpRemoteAddress);
+        int id = connection.getID();
+        connections = Structs.remove(connections, connection);
+        IntMap<Connection> map = connectionsMap;
+        if(map.get(id) == connection){
+            map = new IntMap<>(map);
+            map.remove(id);
+            connectionsMap = map;
+        }
+        InetSocketAddress address = connection.udpRemoteAddress;
+        if(address != null && udpAddressToConnection.get(address) == connection)
+            udpAddressToConnection.remove(address);
     }
 
     protected void clearConnections(){
-        connections.clear();
-        connectionsMap.clear();
+        connections = new Connection[0];
+        connectionsMap = new IntMap<>();
         pendingConnections.clear();
         udpAddressToConnection.clear();
     }
@@ -548,59 +572,60 @@ public class Server implements EndPoint{
     }
 
     public Connection getConnectionIndex(int index){
-        return connections.get(index);
+        return connections[index];
     }
 
     public int getConnectionsSize(){
-        return connections.size;
+        return connections.length;
     }
 
-    public void eachConnections(Cons<Connection> consumer) {
-        connections.each(consumer);
+    /** Returns the connections array. MUST NOT BE MODIFIED! */
+    public Connection[] getConnections(){
+        return connections;
     }
 
-    public void sendToAllTCP(Object object){
-        synchronized(bulkWriteLock){
-            ByteBuffer buffer;
-            try{
-                buffer = serializeTCP(object);
-            }catch(Throwable ex){
-                ArcNet.handleError(ex);
-                return;
-            }
+    public void eachConnections(Cons<Connection> consumer){
+        Structs.each(consumer, connections);
+    }
 
-            for(int i = 0; i < connections.size; i++){
-                Connection con = connections.get(i);
-                try{
-                    con.sendTCPBuffer(buffer);
-                }catch(Exception e){
-                    ArcNet.handleError(e);
-                    con.close(DcReason.error);
-                }
-            }
+    public void eachConnections(Boolf<Connection> predicate, Cons<Connection> consumer){
+        Connection[] connections = this.connections;
+        for(Connection c : connections){
+            if (predicate.get(c)) consumer.get(c);
         }
     }
 
-    public void sendToAllExceptTCP(int connectionID, Object object){
-        synchronized(bulkWriteLock){
-            ByteBuffer buffer;
-            try{
-                buffer = serializeTCP(object);
-            }catch(Throwable ex){
-                ArcNet.handleError(ex);
-                return;
-            }
+    public void sendToAllTCP(Object object){
+        sendToAllExceptTCP(0, object);
+    }
 
-            for(int i = 0; i < connections.size; i++){
-                Connection con = connections.get(i);
-                if(con.getID() == connectionID) continue;
-                try{
-                    con.sendTCPBuffer(buffer);
-                }catch(Exception e){
-                    ArcNet.handleError(e);
-                    con.close(DcReason.error);
-                }
+    /** Sends the object over TCP to every connection except the specified one, serializing it only once. */
+    public void sendToAllExceptTCP(int connectionID, Object object){
+        Connection[] connections = this.connections;
+        if(connections.length == 0) return;
+        ByteBuffer buffer = serialize(object, true);
+        if(buffer == null) return;
+
+        try{
+            for(Connection con : connections){
+                if(con.getID() != connectionID && con.isConnected()) con.sendTCPBuffer(buffer);
             }
+        }finally{
+            ByteBufferPool.free(buffer);
+        }
+    }
+
+    /** Sends the object over TCP to every connection in the list, serializing it only once. */
+    public void sendToAllTCP(Object object, Iterable<Connection> connections){
+        ByteBuffer buffer = serialize(object, true);
+        if(buffer == null) return;
+
+        try{
+            for(Connection con : connections){
+                if(con.isConnected()) con.sendTCPBuffer(buffer);
+            }
+        }finally{
+            ByteBufferPool.free(buffer);
         }
     }
 
@@ -609,102 +634,48 @@ public class Server implements EndPoint{
         if(connection != null) connection.sendTCP(object);
     }
 
-    /** Sends the object over TCP to every connection in the list, serializing it only once. */
-    public void sendToAllTCP(Object object, Iterable<Connection> connections){
-        synchronized(bulkWriteLock){
-            ByteBuffer buffer;
-            try{
-                buffer = serializeTCP(object);
-            }catch(Throwable ex){
-                ArcNet.handleError(ex);
-                return;
-            }
-
-            for(Connection con : connections){
-                if(!con.isConnected()) continue;
-                try{
-                    con.sendTCPBuffer(buffer);
-                }catch(Exception e){
-                    ArcNet.handleError(e);
-                    con.close(DcReason.error);
-                }
-            }
-        }
-    }
-
-
+    /**
+     * Sends the object over UDP to every connection, serializing it only once.
+     * TCP only connections are ignored.
+     */
     public void sendToAllUDP(Object object){
-        if(udp == null) return;
-
-        synchronized(bulkWriteLock){
-            ByteBuffer buffer;
-            try{
-                buffer = serializeUDP(object);
-            }catch(Throwable ex){
-                ArcNet.handleError(ex);
-                return;
-            }
-
-            for(int i = 0; i < connections.size; i++){
-                Connection con = connections.get(i);
-                try{
-                    con.sendUDPBuffer(buffer);
-                }catch(Exception e){
-                    //note: 'vanilla' kryonet doesn't do this, but mindustry does this in ArcConnection#send upon error, so it's probably best to close upon error here as well and not let it propagate
-                    ArcNet.handleError(e);
-                    con.close(DcReason.error);
-                }
-            }
-        }
+        sendToAllExceptUDP(0, object);
     }
 
+    /**
+     * Sends the object over UDP to every connection except the specified one, serializing it only once.
+     * TCP only connections are ignored.
+     */
     public void sendToAllExceptUDP(int connectionID, Object object){
-        if(udp == null) return;
+        Connection[] connections = this.connections;
+        if(udp == null || connections.length == 0) return;
+        ByteBuffer buffer = serialize(object, false);
+        if(buffer == null) return;
 
-        synchronized(bulkWriteLock){
-            ByteBuffer buffer;
-            try{
-                buffer = serializeUDP(object);
-            }catch(Throwable ex){
-                ArcNet.handleError(ex);
-                return;
+        try{
+            for(Connection con : connections){
+                if(con.getID() != connectionID && !con.tcpOnly && con.isConnected()) con.sendUDPBuffer(buffer);
             }
-
-            for(int i = 0; i < connections.size; i++){
-                Connection con = connections.get(i);
-                if(con.getID() == connectionID) continue;
-                try{
-                    con.sendUDPBuffer(buffer);
-                }catch(Exception e){
-                    ArcNet.handleError(e);
-                    con.close(DcReason.error);
-                }
-            }
+        }finally{
+            ByteBufferPool.free(buffer);
         }
     }
 
-    /** Sends the object over UDP to every connection in the list, serializing it only once. */
+    /**
+     * Sends the object over UDP to every connection in the list, serializing it only once.
+     * The TCP only connections are ignored.
+     */
     public void sendToAllUDP(Object object, Iterable<Connection> connections){
         if(udp == null) return;
+        ByteBuffer buffer = serialize(object, false);
+        if(buffer == null) return;
 
-        synchronized(bulkWriteLock){
-            ByteBuffer buffer;
-            try{
-                buffer = serializeUDP(object);
-            }catch(Throwable ex){
-                ArcNet.handleError(ex);
-                return;
-            }
-
+        try{
             for(Connection con : connections){
-                if(!con.isConnected()) continue; //note: since this method accepts a list of connections, there may be stale connections, so filter for that (not possible otherwise)
-                try{
-                    con.sendUDPBuffer(buffer);
-                }catch(Exception e){
-                    ArcNet.handleError(e);
-                    con.close(DcReason.error);
-                }
+                if(!con.tcpOnly && con.isConnected()) con.sendUDPBuffer(buffer);
             }
+        }finally{
+            ByteBufferPool.free(buffer);
         }
     }
 
@@ -713,37 +684,18 @@ public class Server implements EndPoint{
         if(connection != null) connection.sendUDP(object);
     }
 
-    /** Writes an object to the bulk-write buffer for TCP, including the length prefix. */
-    private ByteBuffer serializeTCP(Object object){
-        synchronized(bulkWriteLock){
-            bulkWriteBuffer.clear();
-            int lengthLength = serializer.getLengthLength();
-            try{
-                bulkWriteBuffer.position(lengthLength);
-                serializer.write(bulkWriteBuffer, object);
-            }catch(Exception ex){
-                throw new ArcNetException("Error serializing object of type: " + object.getClass().getName(), ex);
-            }
-            int end = bulkWriteBuffer.position();
-            bulkWriteBuffer.position(0);
-            serializer.writeLength(bulkWriteBuffer, end - lengthLength);
-            bulkWriteBuffer.position(end);
-            bulkWriteBuffer.flip();
-            return bulkWriteBuffer;
-        }
-    }
-
-    /** Writes an object to the bulk-write buffer. No length prefix. */
-    private ByteBuffer serializeUDP(Object object){
-        synchronized(bulkWriteLock){
-            bulkWriteBuffer.clear();
-            try{
-                serializer.write(bulkWriteBuffer, object);
-            }catch(Exception ex){
-                throw new ArcNetException("Error serializing object of type: " + object.getClass().getName(), ex);
-            }
-            bulkWriteBuffer.flip();
-            return bulkWriteBuffer;
+    protected ByteBuffer serialize(Object object, boolean tcp){
+        if(object == null) throw new IllegalArgumentException("object cannot be null.");
+        ByteBuffer buffer = ByteBufferPool.get().obtain(writeBufferSize, directBuffers);
+        try{
+            if(tcp) TcpConnection.write(serializer, buffer, object);
+            else UdpConnection.write(serializer, buffer, object);
+            buffer.flip();
+            return buffer;
+        }catch(ArcNetException ex){
+            ByteBufferPool.free(buffer);
+            ArcNet.handleError(ex);
+            return null;
         }
     }
 
@@ -765,38 +717,49 @@ public class Server implements EndPoint{
     /**
      * Closes all open connections and the server port(s).
      */
+    @Override
     public void close(){
-        eachConnections(Connection::dispose);
-        clearConnections();
-        stales = null;
+        synchronized(updateLock){
+            Structs.each(Server::disposeQuietly, connections);
+            pendingConnections.values().toSeq().each(Server::disposeQuietly);
+            clearConnections();
 
-        ServerSocketChannel serverChannel = this.serverChannel;
-        if(serverChannel != null){
+            ServerSocketChannel serverChannel = this.serverChannel;
+            if(serverChannel != null){
+                try{
+                    serverChannel.close();
+                }catch(IOException ignored){}
+                this.serverChannel = null;
+            }
+
+            if(discoveryReceiver != null){
+                discoveryReceiver.close();
+                discoveryReceiver = null;
+            }
+
+            UdpConnection udp = this.udp;
+            if(udp != null){
+                this.udp = null;
+                udp.dispose();
+            }
+
+            // Select one last time to complete closing the sockets.
+            selector.wakeup();
+            keysChanged = true;
             try{
-                serverChannel.close();
-            }catch(IOException ignored){}
-            this.serverChannel = null;
+                selector.selectNow();
+            }catch(IOException | ClosedSelectorException ignored){}
         }
+    }
 
-        if(discoveryReceiver != null){
-            discoveryReceiver.close();
-            discoveryReceiver = null;
-        }
-
-        UdpConnection udp = this.udp;
-        if(udp != null){
-            udp.dispose();
-            this.udp = null;
-        }
-
-        // Blocks to avoid a select while the selector is used to bind the server connection.
-        synchronized(updateLock){}
-
-        // Select one last time to complete closing the socket.
-        selector.wakeup();
+    /** A listener failing must not prevent closing and releasing connections. */
+    private static void disposeQuietly(Connection connection){
         try{
-            selector.selectNow();
-        }catch(IOException ignored){}
+            connection.close(DcReason.closed);
+        }catch(RuntimeException ex){
+            ArcNet.handleError(ex);
+        }
+        connection.dispose();
     }
 
     /**
@@ -804,10 +767,19 @@ public class Server implements EndPoint{
      */
     @Override
     public void dispose(){
-        close();
         try{
-            selector.close();
-        }catch(IOException ignored){}
+            close();
+        }catch(RuntimeException ex){
+            // A listener can fail, but everything must still be released
+            ArcNet.handleError(ex);
+        }finally{
+            shutdown = true;
+            synchronized(updateLock){
+                try{
+                    selector.close();
+                }catch(IOException ignored){}
+            }
+        }
     }
 
     @Override
@@ -825,30 +797,33 @@ public class Server implements EndPoint{
     // it really doesn't matter if the multicast works or not
     @SuppressWarnings("deprecation")
     public class DiscoveryReceiver{
-        MulticastSocket socket = null;
+        volatile MulticastSocket socket = null;
         Thread multicastThread;
 
         public void close(){
-            try{
-                if(multicastThread != null) multicastThread.interrupt();
-                if(socket == null) return;
-                socket.leaveGroup(multicastGroup);
-                socket.close();
-            }catch(IOException e){
-                ArcNet.handleError(e);
-            }
+            if(multicastThread != null) multicastThread.interrupt();
+            MulticastSocket socket = this.socket;
+            if(socket != null) socket.close();
         }
 
         public void start(){
             multicastThread = Threads.daemon("Server Multicast Discovery", () -> {
-                try{
-                    socket = new MulticastSocket(multicastPort);
+                try(MulticastSocket socket = new MulticastSocket(multicastPort)){
+                    this.socket = socket;
+                    if(Thread.currentThread().isInterrupted()) return; // Closed in the meantime
                     socket.joinGroup(multicastGroup);
                     DatagramPacket packet = new DatagramPacket(new byte[512], 512);
                     while(true){
                         socket.receive(packet);
                         discoveryHandler.onDiscoverReceived(packet.getAddress(), buffer -> {
-                            DatagramPacket out = new DatagramPacket(buffer.array(), buffer.arrayOffset(), buffer.remaining());
+                            DatagramPacket out;
+                            if(buffer.hasArray()){
+                                out = new DatagramPacket(buffer.array(), buffer.arrayOffset() + buffer.position(), buffer.remaining());
+                            }else{
+                                byte[] data = new byte[buffer.remaining()];
+                                buffer.duplicate().get(data);
+                                out = new DatagramPacket(data, data.length);
+                            }
                             out.setSocketAddress(packet.getSocketAddress());
                             socket.send(out);
                         });
@@ -863,6 +838,6 @@ public class Server implements EndPoint{
     }
 
     public interface ServerConnectFilter{
-        boolean accept(String address);
+        boolean accept(InetSocketAddress address);
     }
 }

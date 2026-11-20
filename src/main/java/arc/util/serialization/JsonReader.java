@@ -612,7 +612,9 @@ public class JsonReader implements BaseJsonReader{
         JsonValue root = this.root;
         this.root = null;
         current = null;
+        JsonValue unclosed = elements.size != 0 ? elements.peek() : null;
         lastChild.clear();
+        elements.clear();
 
         if(p < length){
             int lineNumber = 1;
@@ -621,10 +623,8 @@ public class JsonReader implements BaseJsonReader{
             int start = Math.max(0, p - 32);
             throw new SerializationException("Error parsing JSON on line " + lineNumber + " near: "
             + new String(data, start, p - start) + "*ERROR*" + new String(data, p, Math.min(64, length - p)), parseRuntimeEx);
-        }else if(elements.size != 0){
-            JsonValue element = elements.peek();
-            elements.clear();
-            if(element != null && element.isObject())
+        }else if(unclosed != null){
+            if(unclosed.isObject())
                 throw new SerializationException("Error parsing JSON, unmatched brace.");
             else
                 throw new SerializationException("Error parsing JSON, unmatched bracket.");

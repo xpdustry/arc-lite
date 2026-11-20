@@ -259,6 +259,7 @@ public class ObjectFloatMap<K> implements Iterable<ObjectFloatMap.Entry<K>>{
      * @param defaultValue {@link Float#NaN} can be used for a value unlikely to be in the map.
      */
     public float remove(K key, float defaultValue){
+        if(key == null) return defaultValue;
         int i = locateKey(key);
         if(i < 0) return defaultValue;
         K[] keyTable = this.keyTable;
@@ -343,7 +344,7 @@ public class ObjectFloatMap<K> implements Iterable<ObjectFloatMap.Entry<K>>{
     }
 
     public boolean containsKey(K key){
-        return locateKey(key) >= 0;
+        return key != null && locateKey(key) >= 0;
     }
 
     /**

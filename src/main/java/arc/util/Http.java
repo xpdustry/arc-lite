@@ -432,15 +432,12 @@ public class Http{
         TOO_MANY_REQUESTS(429),
         WOULD_BLOCK(430), //sure of that?
         REQUEST_HEADER_FIELDS_TOO_LARGE(431),
-        /** @deprecated Use {@link #REQUEST_HEADER_FIELDS_TOO_LARGE} instead. */
-        @Deprecated
-        HEADER_FIELDS_TOO_LARGE(431),
         UNAVAILABLE_FOR_LEGAL_REASONS(451),
         // Nginx
         REQUEST_HEADER_TOO_LARGE(494),
         SSL_CERTIFICATE_ERROR(495),      // These are ambiguous with 525 and 526
-        SSL_CERTIFICATE_REQUESTED(596),  //
-        HTTP_REQUEST_SENT_TO_HTTPS_PORT(597),
+        SSL_CERTIFICATE_REQUESTED(496),  //
+        HTTP_REQUEST_SENT_TO_HTTPS_PORT(497),
         CLIENT_CLOSED_REQUEST(499),
 
         //5xx - server error
@@ -455,9 +452,6 @@ public class Http{
         LOOP_DETECTED(508),
         BANDWIDTH_LIMIT_EXCEEDED(509),
         NOT_EXTENDED(510),
-        /** @deprecated Typo, use {@link #NOT_EXTENDED} instead. */
-        @Deprecated
-        NOT_EXTENTED(510),
         NETWORK_AUTHENTICATION_REQUIRED(511),
         // Cloudflare
         UNKNOWN_WEB_SERVER_ERROR(520),
@@ -472,8 +466,7 @@ public class Http{
 
         private static final HttpStatus[] all = values();
         private static final IntMap<HttpStatus> byCode = new IntMap<>(all.length);
-        // Deprecated aliases are declared after their replacement, so keep the first status found for a code
-        static { Structs.each(s -> { if(!byCode.containsKey(s.code)) byCode.put(s.code, s); }, all); }
+        static { Structs.each(s -> byCode.put(s.code, s), all); }
 
         public final int code;
 
@@ -487,7 +480,7 @@ public class Http{
         }
 
         public static HttpStatus byIndex(int index){
-            return index < 0 || index > all.length ? UNKNOWN_STATUS : all[index];
+            return index < 0 || index >= all.length ? UNKNOWN_STATUS : all[index];
         }
 
         public static HttpStatus byName(String name){

@@ -111,6 +111,17 @@ public class DelayedRemovalSeq<T> extends Seq<T>{
     }
 
     @Override
+    public Seq<T> removeAll(arc.func.Boolf<T> pred){
+        if(iterating > 0){
+            for(int i = 0; i < size; i++){
+                if(pred.get(items[i])) removeIntern(i);
+            }
+            return this;
+        }
+        return super.removeAll(pred);
+    }
+
+    @Override
     public void removeRange(int start, int end){
         if(iterating > 0){
             for(int i = end; i >= start; i--)

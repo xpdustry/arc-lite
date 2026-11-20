@@ -2,6 +2,7 @@ package arc.util;
 
 import arc.util.Log.*;
 
+import java.util.Arrays;
 
 /** Logger with topics. */
 public class Logger{
@@ -13,7 +14,7 @@ public class Logger{
     /** Custom logging level. {@code null} to use {@link Log#level}. */
     public LogLevel level;
     protected String[] topics;
-    protected String formattedTopics;
+    protected final String[] formattedTopics = new String[LogLevel.values().length];
     public LoggerHandler logger = defaultLogger;
     /** Only used once to format topics, the result is then cached. */
     public TopicFormatter topicFormatter = defaultTopicFormatter;
@@ -64,18 +65,18 @@ public class Logger{
     public void addTopic(String topic) {
         if (topic == null || (topic = topic.trim()).isEmpty()) return;
         topics = topics == null ? new String[] {topic} : Structs.add(topics, topic);
-        formattedTopics = null;
+        Arrays.fill(formattedTopics, null);
     }
 
     /** Ignores empty topics. */
     public void setTopics(String[] topics) {
         if (topics == null || topics.length == 0) return;
         this.topics = Structs.filter(topics, t -> t == null || t.isEmpty());
-        formattedTopics = null;
+        Arrays.fill(formattedTopics, null);
     }
 
     public void log(LogLevel level, String text, Throwable th, Object... args){
-        if((level != null ? level.ordinal() : Log.level.ordinal()) > this.level.ordinal()) return;
+        if((this.level != null ? this.level : Log.level).ordinal() > level.ordinal()) return;
         logger.log(this, level, text, th, args);
     }
     public void log(LogLevel level, String text, Object... args){ log(level, text, null, args); }
@@ -137,9 +138,10 @@ public class Logger{
             }else if(th != null) text = Strings.getStackTrace(th);
 
             //synchronized(delegate){
+                int l = level.ordinal();
                 String tag = context == null || context.topics == null || context.topicFormatter == null ? "" :
-                    context.formattedTopics != null ? context.formattedTopics :
-                    (context.formattedTopics = format(context, context.topicFormatter.format(context, level, context.topics), empty));
+                    context.formattedTopics[l] != null ? context.formattedTopics[l] :
+                    (context.formattedTopics[l] = format(context, context.topicFormatter.format(context, level, context.topics), empty));
 
                 if(text == null || text.isEmpty()){
                     delegate.log(level, tag);

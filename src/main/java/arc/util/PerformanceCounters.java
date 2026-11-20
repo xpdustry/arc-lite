@@ -21,7 +21,7 @@ public class PerformanceCounters{
 
     public void tick(){
         final long t = Time.nanos();
-        if(lastTick > 0L) tick((t - lastTick) / Time.nanosPerSecond);
+        if(lastTick > 0L) tick((t - lastTick) / (float)Time.nanosPerSecond);
         lastTick = t;
     }
 

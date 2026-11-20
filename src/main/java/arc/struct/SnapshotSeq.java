@@ -138,6 +138,12 @@ public class SnapshotSeq<T> extends Seq<T>{
     }
 
     @Override
+    public Seq<T> removeAll(arc.func.Boolf<T> pred){
+        modified();
+        return super.removeAll(pred);
+    }
+
+    @Override
     public T pop(){
         modified();
         return super.pop();

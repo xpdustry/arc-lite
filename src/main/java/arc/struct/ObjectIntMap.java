@@ -218,6 +218,17 @@ public class ObjectIntMap<K> implements Iterable<ObjectIntMap.Entry<K>>{
         return i < 0 ? defaultValue : valueTable[i];
     }
 
+    /** @return the sum of all values. */
+    public int sum(){
+        int sum = 0;
+        K[] keyTable = this.keyTable;
+        int[] valueTable = this.valueTable;
+        for(int i = 0; i < keyTable.length; i++){
+            if(keyTable[i] != null) sum += valueTable[i];
+        }
+        return sum;
+    }
+
     public int increment(K key){
         return increment(key, 0, 1);
     }
@@ -250,6 +261,7 @@ public class ObjectIntMap<K> implements Iterable<ObjectIntMap.Entry<K>>{
 
     /** Returns the value for the removed key, or the default value if the key is not in the map. */
     public int remove(K key, int defaultValue){
+        if(key == null) return defaultValue;
         int i = locateKey(key);
         if(i < 0) return defaultValue;
         K[] keyTable = this.keyTable;
@@ -322,7 +334,7 @@ public class ObjectIntMap<K> implements Iterable<ObjectIntMap.Entry<K>>{
     }
 
     public boolean containsKey(K key){
-        return locateKey(key) >= 0;
+        return key != null && locateKey(key) >= 0;
     }
 
     /**

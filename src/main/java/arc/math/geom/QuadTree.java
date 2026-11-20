@@ -144,6 +144,7 @@ public class QuadTree<T extends QuadTreeObject>{
 
         //single partitioning pass instead of one split()-check per insert
         for(int i = 0; i < size; i++){
+            @SuppressWarnings("unchecked")
             T obj = (T)items[i];
             hitbox(obj);
             QuadTree<T> child = getFittingChild(tmp);

@@ -3,7 +3,6 @@ package arc.util.io;
 import java.io.*;
 import java.nio.*;
 
-import arc.util.Strings;
 
 /** DataOutput wrapper of ByteBuffer. */
 public class ByteBufferOutput implements DataOutput{
@@ -28,6 +27,7 @@ public class ByteBufferOutput implements DataOutput{
         buffer.put((byte) i);
     }
 
+    /** Writes all the remaining bytes of the specified buffer. */
     public void write(ByteBuffer in) {
         buffer.put(in);
     }
@@ -84,7 +84,8 @@ public class ByteBufferOutput implements DataOutput{
 
     @Override
     public void writeBytes(String s){
-        buffer.put(s.getBytes(Strings.utf8));
+        for(int i = 0, n = s.length(); i < n; i++)
+            buffer.put((byte)s.charAt(i));
     }
 
     @Override

@@ -18,7 +18,7 @@ public class HeadlessApplication implements Application{
     protected Thread mainLoopThread;
     protected boolean running = true;
 
-    long frameId = -1, frameStart, lastTime;
+    long frameId = -1, frameStart, lastTime = System.nanoTime();
     float deltaTime = 0;
     int frames, fps;
 
@@ -37,9 +37,9 @@ public class HeadlessApplication implements Application{
         renderInterval = renderIntervalSec > 0 ? (long)(renderIntervalSec * Time.nanosPerSecond) :
                          (renderIntervalSec < 0 ? -1 : 0);
 
-        Core.settings = new Settings();
         Core.app = this;
         Core.files = new MockFiles();
+        Core.settings = new Settings();
         Core.graphics = new MockGraphics(this);
         initialize();
     }

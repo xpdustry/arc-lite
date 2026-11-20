@@ -2,7 +2,7 @@
 
 package arc.net;
 
-import arc.net.FrameworkMessage.Ping;
+import arc.net.FrameworkMessage.*;
 import arc.util.Disposable;
 import arc.util.Time;
 
@@ -19,18 +19,20 @@ import java.nio.channels.*;
 public class Connection implements Disposable{
     int id;
     protected String name;
-    EndPoint endPoint;
-    TcpConnection tcp;
-    UdpConnection udp;
-    InetSocketAddress udpRemoteAddress;
+    protected EndPoint endPoint;
+    protected TcpConnection tcp;
+    protected UdpConnection udp;
+    protected InetSocketAddress udpRemoteAddress;
     protected final DispatchListener listeners = new DispatchListener(true);
     protected int lastPingID;
     protected long lastPingSendTime;
-    protected int returnTripTime;
+    protected int returnTripTime = -1;
     volatile boolean isConnected, disposed, udpPaused;
     volatile ArcNetException lastProtocolError;
     private Object arbitraryData;
     boolean tcpOnly;
+    /** Time when the connection has been accepted by the server. */
+    long acceptTime;
 
     protected Connection(){
     }
@@ -60,11 +62,17 @@ public class Connection implements Disposable{
         return !tcpOnly && (udpRemoteAddress != null || isClientUDP());
     }
 
+    /** @return whether this connection has been registered as TCP only. */
+    public boolean isTCPOnly(){
+        return tcpOnly;
+    }
+
     /**
      * @return whether the UDP connection is from a client or a server.
      * As on a server, the UDP socket is shared among all connections.
      */
-    public boolean isClientUDP() {
+    public boolean isClientUDP(){
+        UdpConnection udp = this.udp;
         return udp != null && udp.connectedAddress != null;
     }
 
@@ -76,20 +84,21 @@ public class Connection implements Disposable{
         return lastProtocolError;
     }
 
+    public void clearLastProtocolError(){
+        lastProtocolError = null;
+    }
+
     /**
      * Sends the object over the network using TCP.
-     * @return The number of bytes sent.
+     * @return The number of bytes sent, 0 on error, closed or disposed.
      */
     public int sendTCP(Object object){
         if(object == null) throw new IllegalArgumentException("object cannot be null.");
-        checkDisposed();
 
         try{
             return tcp.send(object);
         }catch(IOException | ArcNetException ex){
-            close(DcReason.error);
-            ArcNet.handleError(ex);
-            return 0;
+            return sendFailed(ex);
         }
     }
 
@@ -104,68 +113,76 @@ public class Connection implements Disposable{
         try{
             return tcp.sendBuffer(buffer);
         }catch(IOException | ArcNetException ex){
-            close(DcReason.error);
-            ArcNet.handleError(ex);
-            return 0;
+            return sendFailed(ex);
         }
     }
 
     /**
      * Sends the object over the network using UDP.
-     * @return The number of bytes sent.
+     * @return The number of bytes sent, 0 on error, closed or disposed.
      * @throws IllegalStateException if this connection was not opened with both TCP and UDP.
      */
     public int sendUDP(Object object){
-        if(object == null)
-            throw new IllegalArgumentException("object cannot be null.");
-        checkDisposed();
-        SocketAddress address = udpRemoteAddress;
-        if(address == null && udp != null)
-            address = udp.connectedAddress;
-        if(address == null && isConnected)
-            throw new IllegalStateException("Connection is not connected via UDP.");
+        if(object == null) throw new IllegalArgumentException("object cannot be null.");
+        UdpConnection udp = this.udp;
+        SocketAddress address = getUDPAddress(udp);
 
         try{
-            if(address == null) throw new SocketException("Connection is closed.");
+            checkUDPSendable(udp, address);
             return udp.send(object, address);
         }catch(IOException | ArcNetException ex){
-            close(DcReason.error);
-            ArcNet.handleError(ex);
-            return 0;
+            return sendFailed(ex);
         }
     }
 
     /**
      * Sends a pre-serialized buffer over UDP.
      * @return The number of bytes sent, 0 on error.
+     * @throws IllegalStateException if this connection was not opened with both TCP and UDP.
      */
     public int sendUDPBuffer(ByteBuffer buffer){
         if(buffer == null) throw new IllegalArgumentException("buffer cannot be null.");
-        SocketAddress address = udpRemoteAddress;
-        if(address == null && udp != null)
-            address = udp.connectedAddress;
-        if(address == null && isConnected)
-            throw new IllegalStateException("Connection is not connected via UDP.");
+        UdpConnection udp = this.udp;
+        SocketAddress address = getUDPAddress(udp);
 
         try{
-            if(address == null) throw new SocketException("Connection is closed.");
-
+            checkUDPSendable(udp, address);
             return udp.sendBuffer(buffer, address);
         }catch(IOException | ArcNetException ex){
-            close(DcReason.error);
-            ArcNet.handleError(ex);
-            return 0;
+            return sendFailed(ex);
         }
+    }
+
+    private SocketAddress getUDPAddress(UdpConnection udp){
+        SocketAddress address = udpRemoteAddress;
+        if(address == null && udp != null) address = udp.connectedAddress;
+        if(address == null && isConnected) throw new IllegalStateException("Connection is not connected via UDP.");
+        return address;
+    }
+
+    private void checkUDPSendable(UdpConnection udp, SocketAddress address) throws SocketException{
+        // A server connection keeps its remote UDP address after being closed, as the UDP socket is shared.
+        if(disposed) throw new SocketException("Connection is disposed.");
+        if(address == null || udp == null) throw new SocketException("Connection is closed.");
+    }
+
+    private int sendFailed(Exception ex){
+        close(DcReason.error);
+        ArcNet.handleError(ex);
+        return 0;
     }
 
     public void close(DcReason reason){
         udpPaused = false;
-        boolean wasConnected = isConnected;
-        isConnected = false;
+        boolean wasConnected;
+        synchronized(this){ // To be sure
+            wasConnected = isConnected;
+            isConnected = false;
+        }
         tcp.close();
-        if(isClientUDP()) udp.close();
+        UdpConnection udp = this.udp;
+        if(udp != null && udp.connectedAddress != null) udp.close();
         if(wasConnected) notifyDisconnected(reason);
-        setConnected(false);
     }
 
     protected void checkDisposed(){
@@ -177,10 +194,10 @@ public class Connection implements Disposable{
      */
     @Override
     public void dispose(){
+        if(disposed) return;
         disposed = true;
         close(DcReason.closed);
         tcp.dispose();
-        if(isClientUDP()) udp.dispose();
     }
 
     @Override
@@ -236,6 +253,9 @@ public class Connection implements Disposable{
      * The keep alive ensures that the remote end of the connection will be constantly
      * sending objects, and setting the timeout higher than the keep alive allows for
      * network latency.
+     * <p>
+     * On a {@link Server}, this is also the maximum time allowed to a connection
+     * to complete its registration.
      * Set to zero to disable. Defaults to 12000.
      */
     public void setTimeout(int timeoutMillis){
@@ -299,7 +319,7 @@ public class Connection implements Disposable{
     public InetSocketAddress getRemoteAddressTCP(){
         SocketChannel socketChannel = tcp.socketChannel;
         if(socketChannel != null){
-            Socket socket = tcp.socketChannel.socket();
+            Socket socket = socketChannel.socket();
             if(socket != null){
                 return (InetSocketAddress)socket.getRemoteSocketAddress();
             }
@@ -312,7 +332,9 @@ public class Connection implements Disposable{
      * or null if this connection is not connected.
      */
     public InetSocketAddress getRemoteAddressUDP(){
-        return isClientUDP() ? udp.connectedAddress : udpRemoteAddress;
+        UdpConnection udp = this.udp;
+        InetSocketAddress connectedAddress = udp == null ? null : udp.connectedAddress;
+        return connectedAddress != null ? connectedAddress : udpRemoteAddress;
     }
 
     /**
@@ -376,6 +398,7 @@ public class Connection implements Disposable{
 
     /**
      * Pause/resume TCP reading. Does nothing if not connected.
+     * Objects already received are still delivered.
      * Be aware that pausing for too long can lead to a timeout.
      */
     public void pauseTCPReading(boolean pause){
@@ -392,11 +415,13 @@ public class Connection implements Disposable{
      * otherwise they will only be if buffer is full.
      */
     public void pauseUDPReading(boolean pause){
-        if(isClientUDP()) udp.pauseReading(pause);
-        udpPaused = true;
+        UdpConnection udp = this.udp;
+        if(udp != null && udp.connectedAddress != null) udp.pauseReading(pause);
+        udpPaused = pause;
     }
 
     public boolean isUDPPaused(){
-        return udpPaused || udp.isReadingPaused();
+        UdpConnection udp = this.udp;
+        return udpPaused || (udp != null && udp.connectedAddress != null && udp.isReadingPaused());
     }
 }

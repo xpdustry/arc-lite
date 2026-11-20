@@ -34,20 +34,22 @@ public class Strings{
         }
     }
 
-    public static String formatByteCount(long v){
-        return formatSize(v, 1000, "B");
+    public static String formatByteCount(long bytes){
+        return formatSize(bytes, 1000, "B");
     }
 
     public static String formatSize(long value, int base, String unit){
-        String negated = "";
-        if(value < 0){
-            negated = "-";
-            value = -value;
-        }
-        if(value < base) return negated + value + ' ' + unit;
-        int z = (int)(Math.log(value) / Math.log(base));
-        double v = value / Math.pow(base, z);
-        return negated + (int)v + '.' + (int)((v * 10) % 10) + ' ' + "KMGTPE".charAt(z - 1) + unit;
+        return formatSize(value, base, base == 1000 ? "kMGTPE" : "KMGTPE", unit);
+    }
+
+    /** @param prefixes one prefix per power of {@code base}, the last one is used for bigger values. */
+    public static String formatSize(long value, int base, String prefixes, String unit){
+        if(-base < value && value < base) return value + " " + unit;
+        int z = 0, max = prefixes.length() - 1;
+        long limit = (long)base * base - base / 20;
+        for(; (value <= -limit || value >= limit) && z < max; z++) value /= base;
+        long t = Math.abs(value / base * 10 + (value % base * 20 + (value < 0 ? -base : base)) / (2L * base));
+        return (value < 0 ? "-" : "") + t / 10 + '.' + t % 10 + ' ' + prefixes.charAt(z) + unit;
     }
 
     //https://stackoverflow.com/a/9855338
@@ -707,15 +709,14 @@ public class Strings{
         if(len <= 0) return defaultValue;
 
         int sign = 1;
-        char last = value.charAt(len - 1), first = value.charAt(0);
+        char last = value.charAt(end - 1), first = value.charAt(start);
         if(last == 'F' || last == 'f' || last == '.'){
             end --;
         }
         if(first == '+'){
-            start = 1;
-        }
-        if(first == '-'){
-            start = 1;
+            start++;
+        }else if(first == '-'){
+            start++;
             sign = -1;
         }
         if(start >= end) return defaultValue;
@@ -798,7 +799,6 @@ public class Strings{
     }
 
 
-    /** Faster float parser that doesn't throw exceptions. */
     public static float parseFloat(String value, float defaultValue){
         return (float)parseDouble(value, defaultValue);
     }
@@ -1081,8 +1081,9 @@ public class Strings{
 
     /** @return whether the specified string mean true */
     public static boolean isTrue(String str, boolean isValue){
+        if(str == null) return false;
         if(isValue){
-            switch(str.toLowerCase()){
+            switch(str.toLowerCase(Locale.ROOT)){
                 case "1":
                 case "true":
                 case "on":
@@ -1094,7 +1095,7 @@ public class Strings{
                     return false;
             }
         }else{
-            switch(str.toLowerCase()){
+            switch(str.toLowerCase(Locale.ROOT)){
                 case "on":
                 case "enable":
                 case "activate":
@@ -1110,8 +1111,9 @@ public class Strings{
 
     /** @return whether the specified string mean false */
     public static boolean isFalse(String str, boolean isValue){
+        if(str == null) return false;
         if(isValue){
-            switch(str.toLowerCase()){
+            switch(str.toLowerCase(Locale.ROOT)){
                 case "0":
                 case "false":
                 case "off":
@@ -1123,7 +1125,7 @@ public class Strings{
                     return false;
             }
         }else{
-            switch(str.toLowerCase()){
+            switch(str.toLowerCase(Locale.ROOT)){
                 case "off":
                 case "disable":
                 case "desactivate":
@@ -1134,10 +1136,12 @@ public class Strings{
         }
     }
 
+    /** @return whether {@code newVersion} is greater than {@code currentVersion}. */
     public static boolean isVersionAtLeast(String currentVersion, String newVersion){
         return compareVersion(currentVersion, newVersion, 0) < 0;
     }
 
+    /** @return whether {@code newVersion} is greater than {@code currentVersion}. */
     public static boolean isVersionAtLeast(String currentVersion, String newVersion, int maxDepth){
         return compareVersion(currentVersion, newVersion, maxDepth) < 0;
     }
@@ -1149,65 +1153,46 @@ public class Strings{
     /**
      * Compare if {@code newVersion} is greater or less than {@code currentVersion}, e.g. "v146" > "124.1". <br>
      * {@code maxDepth} defines the number of comparisons of version segments, allowing sub-versions to be ignored. (default is 0)
-     *
-     * @apiNote can handle dots and dashes in the version and makes very fast comparison. <br>
-     *          Also ignores non-int parts. (e.g. {@code "v1.2-rc36"}, the {@code "rc36"} part will be ignored)
+     * <p>
+     * Can handle dots and dashes in the version and makes very fast comparison. <br>
+     * Also ignores non-int parts. (e.g. {@code "v1.2-rc36"}, the {@code "rc36"} part will be ignored)
+     * @return {@code -1} if {@code currentVersion < newVersion}, {@code 1} if {@code currentVersion > newVersion},
+     *         or {@code 0} if they are equal (missing segments are considered as {@code 0}).
      */
-    @SuppressWarnings("null")
     public static int compareVersion(String currentVersion, String newVersion, int maxDepth){
         if(maxDepth < 1) maxDepth = Integer.MAX_VALUE;
         boolean currentEmpty = currentVersion == null || currentVersion.isEmpty();
         boolean newEmpty = newVersion == null || newVersion.isEmpty();
 
         if(currentEmpty && newEmpty) return 0;
-        else if(currentEmpty && !newEmpty) return -1;
-        else if(!currentEmpty && newEmpty) return 1;
+        else if(currentEmpty) return -1;
+        else if(newEmpty) return 1;
 
         int last1 = currentVersion.charAt(0) == 'v' ? 1 : 0, last2 = newVersion.charAt(0) == 'v' ? 1 : 0,
             len1 = currentVersion.length(),
-            len2 = newVersion.length(),
-            dash1 = 0, dash2 = 0,
-            dot1 = 0, dot2 = 0,
-            p1 = 0, p2 = 0;
+            len2 = newVersion.length();
 
-        while((dot1 != -1 && dot2 != -1) && (last1 < len1 && last2 < len2) && maxDepth-- > 0){
-            dot1 = currentVersion.indexOf('.', last1);
-            dash1 = currentVersion.indexOf('-', last1);
-            dot2 = newVersion.indexOf('.', last2);
-            dash2 = newVersion.indexOf('-', last2);
-
-            if(dot1 == -1) dot1 = dash1;
-            if(dash1 != -1) dot1 = Math.min(dot1, dash1);
-            if(dot1 == -1) dot1 = len1;
-            if(dot2 == -1) dot2 = dash2;
-            if(dash2 != -1) dot2 = Math.min(dot2, dash2);
-            if(dot2 == -1) dot2 = len2;
-
-            p1 = parseInt(currentVersion, 10, 0, last1, dot1);
-            p2 = parseInt(newVersion, 10, 0, last2, dot2);
-            last1 = dot1 + 1;
-            last2 = dot2 + 1;
+        while((last1 < len1 || last2 < len2) && maxDepth-- > 0){
+            int end1 = versionSegmentEnd(currentVersion, last1),
+                end2 = versionSegmentEnd(newVersion, last2),
+                // A missing segment is considered as 0 (e.g. "1.0" == "1.0.0")
+                p1 = last1 < len1 ? parseInt(currentVersion, 10, 0, last1, end1) : 0,
+                p2 = last2 < len2 ? parseInt(newVersion, 10, 0, last2, end2) : 0;
 
             if(p1 != p2) return p1 < p2 ? -1 : 1;
-        }
-
-        if(maxDepth <= 0) return p1 < p2 ? -1 : 1;
-
-        // Continue iteration on newVersion to see if it's just leading zeros.
-        while(dot2 != -1 && last2 < len2){
-            dot2 = newVersion.indexOf('.', last2);
-            dash2 = newVersion.indexOf('-', last2);
-
-            if(dot2 == -1) dot2 = dash2;
-            if(dash2 != -1) dot2 = Math.min(dot2, dash2);
-            if(dot2 == -1) dot2 = len2;
-
-            p2 = parseInt(newVersion, 10, 0, last2, dot2);
-            last2 = dot2 + 1;
-
-            if(p2 > 0) return -1;
+            last1 = end1 + 1;
+            last2 = end2 + 1;
         }
         return 0;
+    }
+
+    private static int versionSegmentEnd(String version, int from){
+        int len = version.length();
+        if(from >= len) return len;
+        int dot = version.indexOf('.', from), dash = version.indexOf('-', from);
+        if(dot == -1) dot = len;
+        if(dash == -1) dash = len;
+        return Math.min(dot, dash);
     }
 
     private static final Object[][] TIME_PERIODS = {
@@ -1310,8 +1295,8 @@ public class Strings{
     }
 
     public static byte[] deflate(String str){
+        Deflater deflater = new Deflater();
         try{
-            Deflater deflater = new Deflater();
             deflater.setInput(str.getBytes(utf8));
             deflater.finish();
             ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -1320,27 +1305,31 @@ public class Strings{
                 int count = deflater.deflate(buffer);
                 out.write(buffer, 0, count);
             }
-            deflater.end();
             return out.toByteArray();
         }catch(Exception e){
             throw new RuntimeException(e);
+        }finally{
+            deflater.end();
         }
     }
 
     public static String undeflate(byte[] bytes){
+        Inflater inflater = new Inflater();
         try{
-            Inflater inflater = new Inflater();
             inflater.setInput(bytes);
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             byte[] buffer = new byte[1024];
             while(!inflater.finished()){
                 int count = inflater.inflate(buffer);
+                if(count == 0 && (inflater.needsInput() || inflater.needsDictionary()))
+                    throw new DataFormatException("Truncated or incomplete deflated data");
                 out.write(buffer, 0, count);
             }
-            inflater.end();
             return new String(out.toByteArray(), utf8);
         }catch(Exception e){
             throw new RuntimeException(e);
+        }finally{
+            inflater.end();
         }
     }
 }

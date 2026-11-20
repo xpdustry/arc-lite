@@ -8,7 +8,7 @@ import arc.struct.*;
 public class ColorCodes{
     public static String
     prefix = "&",
-    
+
     flush = "\033[H\033[2J",
     reset = "\u001B[0m",
     bold = "\u001B[1m",
@@ -46,7 +46,12 @@ public class ColorCodes{
             = white = backDefault = backRed = backYellow = backBlue = backGreen = italic = "";
         }
 
-        ObjectMap<String, String> map = ObjectMap.of(
+        OrderedMap<String, String> map = OrderedMap.of(
+        "bd", backDefault,
+        "br", backRed,
+        "bg", backGreen,
+        "by", backYellow,
+        "bb", backBlue,
         "ff", flush,
         "fr", reset,
         "fb", bold,
@@ -67,48 +72,41 @@ public class ColorCodes{
         "lm", lightMagenta,
         "lb", lightBlue,
         "lc", lightCyan,
-        "w", white,
-
-        "bd", backDefault,
-        "br", backRed,
-        "bg", backGreen,
-        "by", backYellow,
-        "bb", backBlue
+        "w", white
         );
-
-        codes = map.keys().toSeq().toArray(String.class);
+        codes = map.orderedKeys().toArray(String.class);
         values = map.values().toSeq().toArray(String.class);
     }
-    
+
     public static String apply(String text){
         return apply(text, true);
     }
-    
+
     public static String apply(String text, boolean useColors){
         if(useColors){
-            for(int i = 0; i < codes.length; i++) 
+            for(int i = 0; i < codes.length; i++)
                 text = text.replace(prefix + codes[i], values[i]);
         }else{
-            for(String color : codes) 
+            for(String color : codes)
                 text = text.replace(prefix + color, "");
         }
         return text;
     }
-    
+
     //////////
     // https://github.com/xpdustry/ansi-enabler/blob/master/src/main/java/com/xpdustry/ansi/Ansi.java
-    
+
     private static final int ENABLE_PROCESSED_OUTPUT = 0x0001,
                              ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004;
-  
+
     private static boolean install(){
         if (!jansiPresent()) return false;
-        if (enable()) return true; 
+        if (enable()) return true;
         // At this point we cannot use arc.util.Log
         System.out.print("WARNING: Failed to enable ANSI colors: " + getLastError());
         return false;
     }
-    
+
     private static boolean jansiPresent(){
         try {
             Class.forName("org.fusesource.jansi.internal.Kernel32");
@@ -117,27 +115,27 @@ public class ColorCodes{
             return false;
         }
     }
-    
+
     private static boolean enable(){
         return enable(STD_INPUT_HANDLE)
             && enable(STD_OUTPUT_HANDLE)
             && enable(STD_ERROR_HANDLE);
     }
-    
+
     private static boolean enable(final int hConsoleHandle){
         final long console = GetStdHandle(hConsoleHandle);
         final int[] mode = new int[1];
         return GetConsoleMode(console, mode) != 0
             && SetConsoleMode(console, mode[0] | ENABLE_PROCESSED_OUTPUT | ENABLE_VIRTUAL_TERMINAL_PROCESSING) != 0;
     }
-    
+
     private static String getLastError(){
         final int errorCode = GetLastError();
         final int bufferSize = 160;
-        final byte data[] = new byte[bufferSize]; 
+        final byte data[] = new byte[bufferSize];
         FormatMessageW(FORMAT_MESSAGE_FROM_SYSTEM, 0, errorCode, 0, data, bufferSize, null);
         return new String(data);
     }
-    
+
     //////////
 }

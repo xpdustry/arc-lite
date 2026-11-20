@@ -52,7 +52,7 @@ public class JsonWriterBuilder implements BaseJsonWriter, Poolable{
 
     @Override
     public JsonWriterBuilder name(String name){
-        if(current == null || current.isArray()) 
+        if(current == null || current.isArray())
             throw new IllegalStateException("Current item must be an object.");
         if(name == null) throw new NullPointerException("name cannot be null");
         this.name = name;
@@ -64,27 +64,28 @@ public class JsonWriterBuilder implements BaseJsonWriter, Poolable{
         requireName();
         if(current != null && !current.isArray() && !current.isObject())
             throw new IllegalStateException("Current item must be an object or an array.");
-        
-        JsonValue jval;
-        if(object == null) jval = new JsonValue(ValueType.nullValue);
-        else if(object instanceof JsonValue) jval = ((JsonValue)object).copy();
+        if(root == null) root = current = toJsonValue(object);
+        else addValue(toJsonValue(object));
+        return this;
+    }
+
+    public static JsonValue toJsonValue(Object object) {
+        if(object == null) return new JsonValue(ValueType.nullValue);
+        else if(object instanceof JsonValue) return ((JsonValue)object).copy();
         else if(object instanceof Number){
             Number number = (Number)object;
-            if(number instanceof Byte) jval = new JsonValue(number.byteValue());
-            else if(number instanceof Short) jval = new JsonValue(number.shortValue());
-            else if(number instanceof Integer) jval = new JsonValue(number.intValue());
-            else if(number instanceof Long) jval = new JsonValue(number.longValue());
-            else if(number instanceof Float) jval = new JsonValue(number.floatValue());
-            else if(number instanceof Double) jval = new JsonValue(number.doubleValue());
+            if(number instanceof Byte) return new JsonValue(number.byteValue());
+            else if(number instanceof Short) return new JsonValue(number.shortValue());
+            else if(number instanceof Integer) return new JsonValue(number.intValue());
+            else if(number instanceof Long) return new JsonValue(number.longValue());
+            else if(number instanceof Float) return new JsonValue(number.floatValue());
+            else if(number instanceof Double) return new JsonValue(number.doubleValue());
             else throw new IllegalArgumentException("Unknown number object type.");
         }
-        else if(object instanceof CharSequence || object instanceof Character) jval = new JsonValue(object.toString());
-        else if(object instanceof Boolean) jval = new JsonValue((boolean)object);
+        else if(object instanceof CharSequence || object instanceof Character) return new JsonValue(object.toString());
+        else if(object instanceof Boolean) return new JsonValue((boolean)object);
         else throw new IllegalArgumentException("Unknown object type.");
-        
-        if(root == null) root = current = jval;
-        else addValue(jval);
-        return this;
+
     }
 
     @Override
@@ -103,14 +104,15 @@ public class JsonWriterBuilder implements BaseJsonWriter, Poolable{
 
     private void addValue(JsonValue value){
         if(current.child == null || last == null){
-            current.addChild(name, value);
-            last = current.child;
-            while(last.next != null) last = last.next;
+            current.addChild(name, value); // appended at the end
+            last = value;
         }else{
-            if(name != null) value.name = new String(name); // idk how this works
+            value.name = name;
             value.parent = current;
+            value.prev = last;
             last.next = value;
-            last = last.next;
+            last = value;
+            current.size++;
         }
         name = null;
     }
@@ -120,36 +122,36 @@ public class JsonWriterBuilder implements BaseJsonWriter, Poolable{
         JsonValue old = current;
         if(current == null) current = newValue;
         if(root == null) root = current;
-        if(old != null){ 
-            addValue(newValue); 
-            current = newValue; 
+        if(old != null){
+            addValue(newValue);
+            current = newValue;
         }
         last = null;
     }
 
     private void requireName(){
-        if(current != null && !current.isArray() && name == null) 
+        if(current != null && !current.isArray() && name == null)
             throw new IllegalStateException("Name must be set.");
     }
 
     @Override
     public JsonWriterBuilder object(String name){
-        return name(name).object(); 
+        return name(name).object();
     }
 
     @Override
-    public JsonWriterBuilder array(String name){ 
-        return name(name).array(); 
+    public JsonWriterBuilder array(String name){
+        return name(name).array();
     }
 
     @Override
-    public JsonWriterBuilder set(String name, Object value){ 
-        return name(name).value(value); 
+    public JsonWriterBuilder set(String name, Object value){
+        return name(name).value(value);
     }
 
     @Override
     public JsonWriterBuilder pop(){
-        if(name != null) 
+        if(name != null)
             throw new IllegalStateException("Expected an object, array or value, since a name was set.");
         last = current;
         if(last != null && (last.isArray() || last.isObject())){
@@ -160,8 +162,8 @@ public class JsonWriterBuilder implements BaseJsonWriter, Poolable{
     }
 
     @Override
-    public void close(){ 
-        while(current != null && root != current) pop(); 
+    public void close(){
+        while(current != null && root != current) pop();
     }
 
     public void reset(){

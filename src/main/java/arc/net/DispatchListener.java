@@ -23,7 +23,7 @@ import arc.util.*;
 
 
 public class DispatchListener implements NetListener {
-  protected NetListener[] listeners = {};
+  protected volatile NetListener[] listeners = {};
   /** Whether {@link #idle(Connection)} calls stop if the connection has stopped to be idle. */
   public boolean cutIdle;
 
@@ -37,9 +37,7 @@ public class DispatchListener implements NetListener {
   public synchronized void addListener(NetListener listener) {
     if(listener == null) throw new IllegalArgumentException("listener cannot be null.");
     if (Structs.contains(listeners, listener)) return;
-    // listeners are always inserted at the start instead of the end. Idk why...
-    //listeners = Structs.add(listeners, listener);
-    listeners = Structs.insert(listeners, 0, listener);
+    listeners = Structs.add(listeners, listener);
   }
 
   public synchronized void removeListener(NetListener listener) {
