@@ -27,10 +27,7 @@ public class Log{
     public static void infoList(Object... args){
         if(level.ordinal() > LogLevel.info.ordinal()) return;
         StringBuilder build = new StringBuilder();
-        for(Object o : args){
-            build.append(o);
-            build.append(" ");
-        }
+        Structs.each(o -> build.append(o).append(' '), args);
         info(build.toString());
     }
 

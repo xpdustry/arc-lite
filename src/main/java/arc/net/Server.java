@@ -632,9 +632,7 @@ public class Server implements EndPoint{
         if(buffer == null) return;
 
         try{
-            for(Connection con : connections){
-                if(con.getID() != exceptID) sendBuffer(con, buffer, reliable);
-            }
+            Structs.each(c -> c.getID() != exceptID, c -> sendBuffer(c, buffer, reliable), connections);
         }finally{
             ByteBufferPool.free(buffer);
         }
@@ -647,9 +645,7 @@ public class Server implements EndPoint{
         if(buffer == null) return;
 
         try{
-            for(Connection con : connections){
-                if(con.getID() != exceptID) sendBuffer(con, buffer, reliable);
-            }
+            Structs.each(connections, c -> c.getID() != exceptID, c -> sendBuffer(c, buffer, reliable));
         }finally{
             ByteBufferPool.free(buffer);
         }

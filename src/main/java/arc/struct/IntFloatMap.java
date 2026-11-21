@@ -93,6 +93,17 @@ public class IntFloatMap implements Iterable<IntFloatMap.Entry>{
         }
     }
 
+    /** @return the sum of all values. */
+    public float sum(){
+        float sum = hasZeroValue ? zeroValue : 0;
+        int[] keyTable = this.keyTable;
+        float[] valueTable = this.valueTable;
+        for(int i = 0; i < keyTable.length; i++){
+            if(keyTable[i] != 0) sum += valueTable[i];
+        }
+        return sum;
+    }
+
     /** Creates a new map identical to the specified map. */
     public IntFloatMap(IntFloatMap map){
         this((int)(map.keyTable.length * map.loadFactor), map.loadFactor);

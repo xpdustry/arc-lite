@@ -128,7 +128,34 @@ public class IntSeq implements Iterable<Integer>{
         return sum;
     }
 
+    public int count(IntBoolf pred){
+        int count = 0;
+        for(int i = 0; i < size; i++){
+            if(pred.get(items[i])) count++;
+        }
+        return count;
+    }
+
+    public boolean allMatch(IntBoolf pred){
+        for(int i = 0; i < size; i++){
+            if(!pred.get(items[i])) return false;
+        }
+        return true;
+    }
+
+    /** Removes the items matching the predicate, keeping the order. */
+    public IntSeq removeAll(IntBoolf pred){
+        int[] items = this.items;
+        int kept = 0;
+        for(int i = 0; i < size; i++){
+            if(!pred.get(items[i])) items[kept++] = items[i];
+        }
+        size = kept;
+        return this;
+    }
+
     public void chunked(int chunkSize, Cons<int[]> iterator){
+        if(chunkSize < 1) throw new IllegalArgumentException("chunkSize must be at least 1: " + chunkSize);
         for(int i = 0; i < size; i += chunkSize){
             int[] slice = Arrays.copyOfRange(items, i, Math.min(i + chunkSize, size));
             iterator.get(slice);

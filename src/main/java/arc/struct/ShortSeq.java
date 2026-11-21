@@ -85,6 +85,14 @@ public class ShortSeq implements Iterable<Short>{
         }
     }
 
+    public int sum(){
+        int sum = 0;
+        for(int i = 0; i < size; i++){
+            sum += items[i];
+        }
+        return sum;
+    }
+
     /** Casts the specified value to short and adds it. */
     public void add(int value){
         short[] items = this.items;

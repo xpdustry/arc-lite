@@ -202,6 +202,15 @@ public class Seq<T> implements Iterable<T>, Eachable<T>{
         return sum;
     }
 
+    /** Gives the items by chunks of at most {@code chunkSize}. */
+    public void chunked(int chunkSize, Cons<Seq<T>> cons){
+        if(chunkSize < 1) throw new IllegalArgumentException("chunkSize must be at least 1: " + chunkSize);
+        for(int i = 0; i < size; i += chunkSize){
+            int count = Math.min(chunkSize, size - i);
+            cons.get(new Seq<T>(ordered, count, items.getClass().getComponentType()).addAll(items, i, count));
+        }
+    }
+
     public <E extends T> void each(Boolf<? super T> pred, Cons<E> consumer){
         int size = this.size;
         T[] items = this.items;

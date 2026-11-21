@@ -50,6 +50,19 @@ public class LongQueue implements Iterable<Long>{
         }
     }
 
+    public long sum(){
+        final long[] values = this.values;
+        long sum = 0;
+        for(int index = 0; index < size; index++){
+            int i = head + index;
+            if(i >= values.length){
+                i -= values.length;
+            }
+            sum += values[i];
+        }
+        return sum;
+    }
+
     /**
      * Append given object to the tail. (enqueue to tail) Unless backing array needs resizing, operates in O(1) time.
      * @param object can be null

@@ -126,11 +126,7 @@ abstract public class Pool<T>{
      */
     public void freeAll(Seq<T> objects){
         if(objects == null) throw new IllegalArgumentException("objects cannot be null.");
-        for(int i = 0; i < objects.size; i++){
-            T object = objects.get(i);
-            if(object == null) continue;
-            offer(object);
-        }
+        objects.each(o -> o != null, this::offer);
     }
 
     /** Fill the pool with new objects. */

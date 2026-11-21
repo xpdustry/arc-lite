@@ -111,11 +111,8 @@ public class ZipFi extends Fi{
         //trigger cache
         list();
 
-        for(ZipFi child : children){
-            if(child.name().equals(name)){
-                return child;
-            }
-        }
+        ZipFi child = Structs.find(children, c -> c.name().equals(name));
+        if(child != null) return child;
 
         return new Fi(new File(file, name)){
             @Override

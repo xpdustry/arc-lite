@@ -1600,12 +1600,12 @@ public class Json{
         defaultInheritSerializers.put(ArrayMap.class, StructSerializer.map(ArrayMap.class, ArrayMap::new, ArrayMap::each, ArrayMap::put));
         defaultInheritSerializers.put(Map.class, StructSerializer.<Map>map(HashMap.class, HashMap::new,
             (m, c) -> Structs.each(((Map<?, ?>)m).entrySet(), o -> c.get(o.getKey(), o.getValue())), Map::put));
-        defaultInheritSerializers.put(IntMap.class, StructSerializer.map(IntMap.class, IntMap::new, Integer.class, null,
-            IntMap::each, (m, k, v) -> m.put((Integer)k, v)));
-        defaultInheritSerializers.put(ObjectIntMap.class, StructSerializer.map(ObjectIntMap.class, ObjectIntMap::new, null, Integer.class,
-            (m, c) -> Structs.each(((ObjectIntMap<?>)m).entries(), o -> c.get(o.key, o.value)), (m, k, v) -> m.put(k, (Integer)v)));
-        defaultInheritSerializers.put(ObjectFloatMap.class, StructSerializer.map(ObjectFloatMap.class, ObjectFloatMap::new, null, Float.class,
-            ObjectFloatMap::each, (m, k, v) -> m.put(k, (Float)v)));
+        defaultInheritSerializers.put(IntMap.class, StructSerializer.map(IntMap.class, IntMap::new, Integer.class, null, IntMap::each,
+            (m, k, v) -> m.put((Integer)k, v)));
+        defaultInheritSerializers.put(ObjectIntMap.class, StructSerializer.map(ObjectIntMap.class, ObjectIntMap::new, null, Integer.class, ObjectIntMap::each,
+            (m, k, v) -> m.put(k, (Integer)v)));
+        defaultInheritSerializers.put(ObjectFloatMap.class, StructSerializer.map(ObjectFloatMap.class, ObjectFloatMap::new, null, Float.class, ObjectFloatMap::each,
+            (m, k, v) -> m.put(k, (Float)v)));
 
         // Enum
         defaultInheritSerializers.put(Enum.class, new Serializer<Enum>(){
@@ -1627,10 +1627,8 @@ public class Json{
             public Enum read(Json json, JsonValue jsonData, Class type, Class elementType, Class keyType){
                 if(jsonData.isObject()) jsonData = jsonData.get("value");
                 String string = jsonData.asString();
-                Enum[] constants = (Enum[])type.getEnumConstants();
-                for(Enum e : constants){
-                    if(string.equals(json.convertToString(e))) return e;
-                }
+                Enum found = Structs.find((Enum[])type.getEnumConstants(), e -> string.equals(json.convertToString(e)));
+                if(found != null) return found;
                 throw new SerializationException("unknown enum field '" + string + "' for type: " + type.getName());
             }
 

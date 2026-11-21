@@ -147,11 +147,7 @@ public class OrderedSet<T> extends ObjectSet<T>{
     public boolean equals(Object obj){
         if(!(obj instanceof ObjectSet)) return false;
         ObjectSet other = (ObjectSet)obj;
-        if(other.size != size) return false;
-        T[] items = this.items.items;
-        for(int i = 0, n = this.items.size; i < n; i++)
-            if(items[i] != null && !other.contains(items[i])) return false;
-        return true;
+        return other.size == size && items.allMatch(other::contains);
     }
 
     public OrderedSetIterator<T> iterator(){

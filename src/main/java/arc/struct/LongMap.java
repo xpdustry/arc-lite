@@ -210,6 +210,15 @@ public class LongMap<V> implements Iterable<LongMap.Entry<V>>{
         return i >= 0 ? valueTable[i] : defaultValue;
     }
 
+    public V get(long key, Prov<V> defaultValue){
+        V out = get(key);
+        if(out == null){
+            out = defaultValue.get();
+            put(key, out);
+        }
+        return out;
+    }
+
     /** Returns the value for the removed key, or null if the key is not in the map. */
     public @Nullable V remove(long key){
         if(key == 0){
@@ -286,14 +295,51 @@ public class LongMap<V> implements Iterable<LongMap.Entry<V>>{
         hasZeroValue = false;
     }
 
-    public void eachValue(Cons<V> iterator){
-        V[] valueTable = this.valueTable;
-        if(hasZeroValue) iterator.get(zeroValue);
-
-        for(int i = valueTable.length - 1; i >= 0; i--){
-            V value = valueTable[i];
-            if(value != null) iterator.get(value);
+    public void eachKey(Longc cons){
+        if(hasZeroValue) cons.get(0);
+        long[] keyTable = this.keyTable;
+        for(int i = 0; i < keyTable.length; i++){
+            if(keyTable[i] != 0) cons.get(keyTable[i]);
         }
+    }
+
+    public void eachValue(Cons<V> iterator){
+        if(hasZeroValue) iterator.get(zeroValue);
+        long[] keyTable = this.keyTable;
+        V[] valueTable = this.valueTable;
+        for(int i = 0; i < keyTable.length; i++){
+            if(keyTable[i] != 0) iterator.get(valueTable[i]);
+        }
+    }
+
+    /** Removes the entries whose value matches the predicate. */
+    public LongMap<V> removeAll(Boolf<V> pred){
+        for(Entries<V> entries = entries(); entries.hasNext;){
+            if(pred.get(entries.next().value)) entries.remove();
+        }
+        return this;
+    }
+
+    /** @return the number of values matching the predicate. */
+    public int count(Boolf<V> pred){
+        int count = hasZeroValue && pred.get(zeroValue) ? 1 : 0;
+        long[] keyTable = this.keyTable;
+        V[] valueTable = this.valueTable;
+        for(int i = 0; i < keyTable.length; i++){
+            if(keyTable[i] != 0 && pred.get(valueTable[i])) count++;
+        }
+        return count;
+    }
+
+    /** @return whether all the values match the predicate. */
+    public boolean allMatch(Boolf<V> pred){
+        if(hasZeroValue && !pred.get(zeroValue)) return false;
+        long[] keyTable = this.keyTable;
+        V[] valueTable = this.valueTable;
+        for(int i = 0; i < keyTable.length; i++){
+            if(keyTable[i] != 0 && !pred.get(valueTable[i])) return false;
+        }
+        return true;
     }
 
     /**

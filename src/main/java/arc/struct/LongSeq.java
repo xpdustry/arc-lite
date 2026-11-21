@@ -1,5 +1,6 @@
 package arc.struct;
 
+import arc.func.LongBoolf;
 import arc.func.Longc;
 import arc.math.Mathf;
 import arc.util.ArcRuntimeException;
@@ -83,6 +84,40 @@ public class LongSeq implements Iterable<Long>{
         for(int i = 0; i < size; i++){
             consumer.get(items[i]);
         }
+    }
+
+    public long sum(){
+        long sum = 0;
+        for(int i = 0; i < size; i++){
+            sum += items[i];
+        }
+        return sum;
+    }
+
+    public int count(LongBoolf pred){
+        int count = 0;
+        for(int i = 0; i < size; i++){
+            if(pred.get(items[i])) count++;
+        }
+        return count;
+    }
+
+    public boolean allMatch(LongBoolf pred){
+        for(int i = 0; i < size; i++){
+            if(!pred.get(items[i])) return false;
+        }
+        return true;
+    }
+
+    /** Removes the items matching the predicate, keeping the order. */
+    public LongSeq removeAll(LongBoolf pred){
+        long[] items = this.items;
+        int kept = 0;
+        for(int i = 0; i < size; i++){
+            if(!pred.get(items[i])) items[kept++] = items[i];
+        }
+        size = kept;
+        return this;
     }
 
     public void add(long value){

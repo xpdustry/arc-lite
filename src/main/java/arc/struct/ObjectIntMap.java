@@ -1,5 +1,6 @@
 package arc.struct;
 
+import arc.func.*;
 import arc.util.*;
 
 import java.util.*;
@@ -216,6 +217,14 @@ public class ObjectIntMap<K> implements Iterable<ObjectIntMap.Entry<K>>{
         if(key == null) return defaultValue;
         int i = locateKey(key);
         return i < 0 ? defaultValue : valueTable[i];
+    }
+
+    public void each(Cons2<K, Integer> cons){
+        K[] keyTable = this.keyTable;
+        int[] valueTable = this.valueTable;
+        for(int i = 0; i < keyTable.length; i++){
+            if(keyTable[i] != null) cons.get(keyTable[i], valueTable[i]);
+        }
     }
 
     /** @return the sum of all values. */

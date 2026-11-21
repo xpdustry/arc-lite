@@ -41,12 +41,9 @@ public class BinaryHeap<T extends BinaryHeap.Node>{
      * @param identity If true, == comparison will be used. If false, .equals() comparison will be used.
      */
     public boolean contains(T node, boolean identity){
-        if(identity || node == null){
-            for(Node n : nodes)
-                if(n == node) return true;
-        }else{
-            for(Node n : nodes)
-                if(n.equals(node)) return true;
+        for(int i = 0; i < size; i++){
+            Node n = nodes[i];
+            if(n == node || !identity && node != null && n.equals(node)) return true;
         }
         return false;
     }

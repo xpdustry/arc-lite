@@ -83,6 +83,15 @@ public class ByteSeq implements Iterable<Byte>{
         }
     }
 
+    /** @return the sum of all items. */
+    public int sum(){
+        int sum = 0;
+        for(int i = 0; i < size; i++){
+            sum += items[i];
+        }
+        return sum;
+    }
+
     public void add(byte value){
         byte[] items = this.items;
         if(size == items.length) items = resize(Math.max(8, (int)(size * 1.75f)));

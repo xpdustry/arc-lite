@@ -618,11 +618,7 @@ public class Fi implements Comparable<Fi>{
     public Fi[] list(){
         if(type == FileType.classpath) throw new ArcRuntimeException("Cannot list a classpath directory: " + file);
         String[] relativePaths = file().list();
-        if(relativePaths == null) return new Fi[0];
-        Fi[] handles = new Fi[relativePaths.length];
-        for(int i = 0, n = relativePaths.length; i < n; i++)
-            handles[i] = child(relativePaths[i]);
-        return handles;
+        return relativePaths == null ? new Fi[0] : Structs.map(relativePaths, Fi.class, this::child);
     }
 
     /**
@@ -633,24 +629,7 @@ public class Fi implements Comparable<Fi>{
      * @throws ArcRuntimeException if this file is an {@link FileType#classpath} file.
      */
     public Fi[] list(FileFilter filter){
-        if(type == FileType.classpath) throw new ArcRuntimeException("Cannot list a classpath directory: " + file);
-        File file = file();
-        String[] relativePaths = file.list();
-        if(relativePaths == null) return new Fi[0];
-        Fi[] handles = new Fi[relativePaths.length];
-        int count = 0;
-        for(String path : relativePaths){
-            Fi child = child(path);
-            if(!filter.accept(child.file())) continue;
-            handles[count] = child;
-            count++;
-        }
-        if(count < relativePaths.length){
-            Fi[] newHandles = new Fi[count];
-            System.arraycopy(handles, 0, newHandles, 0, count);
-            handles = newHandles;
-        }
-        return handles;
+        return listMatching(child -> filter.accept(child.file()));
     }
 
     /**
@@ -661,23 +640,8 @@ public class Fi implements Comparable<Fi>{
      * @throws ArcRuntimeException if this file is an {@link FileType#classpath} file.
      */
     public Fi[] list(FilenameFilter filter){
-        if(type == FileType.classpath) throw new ArcRuntimeException("Cannot list a classpath directory: " + file);
         File file = file();
-        String[] relativePaths = file.list();
-        if(relativePaths == null) return new Fi[0];
-        Fi[] handles = new Fi[relativePaths.length];
-        int count = 0;
-        for(String path : relativePaths){
-            if(!filter.accept(file, path)) continue;
-            handles[count] = child(path);
-            count++;
-        }
-        if(count < relativePaths.length){
-            Fi[] newHandles = new Fi[count];
-            System.arraycopy(handles, 0, newHandles, 0, count);
-            handles = newHandles;
-        }
-        return handles;
+        return listMatching(child -> filter.accept(file, child.name()));
     }
 
     /**
@@ -687,22 +651,12 @@ public class Fi implements Comparable<Fi>{
      * @throws ArcRuntimeException if this file is an {@link FileType#classpath} file.
      */
     public Fi[] list(String suffix){
-        if(type == FileType.classpath) throw new ArcRuntimeException("Cannot list a classpath directory: " + file);
-        String[] relativePaths = file().list();
-        if(relativePaths == null) return new Fi[0];
-        Fi[] handles = new Fi[relativePaths.length];
-        int count = 0;
-        for(String path : relativePaths){
-            if(!path.endsWith(suffix)) continue;
-            handles[count] = child(path);
-            count++;
-        }
-        if(count < relativePaths.length){
-            Fi[] newHandles = new Fi[count];
-            System.arraycopy(handles, 0, newHandles, 0, count);
-            handles = newHandles;
-        }
-        return handles;
+        return listMatching(child -> child.name().endsWith(suffix));
+    }
+
+    /** @return the children from {@link #list()} matching the predicate. */
+    public Fi[] listMatching(Boolf<Fi> predicate){
+        return Seq.select(list(), predicate).toArray(Fi.class);
     }
 
     /**

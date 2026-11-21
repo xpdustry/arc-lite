@@ -73,6 +73,14 @@ public class IntMap<V> implements Iterable<IntMap.Entry<V>>{
         }
     }
 
+    public void eachKey(Intc cons){
+        if(hasZeroValue) cons.get(0);
+        int[] keyTable = this.keyTable;
+        for(int i = 0; i < keyTable.length; i++){
+            if(keyTable[i] != 0) cons.get(keyTable[i]);
+        }
+    }
+
     public void eachValue(Cons<V> cons){
         if(hasZeroValue) cons.get(zeroValue);
         int[] keyTable = this.keyTable;
@@ -80,6 +88,36 @@ public class IntMap<V> implements Iterable<IntMap.Entry<V>>{
         for(int i = 0; i < keyTable.length; i++){
             if(keyTable[i] != 0) cons.get(valueTable[i]);
         }
+    }
+
+    /** Removes the entries whose value matches the predicate. */
+    public IntMap<V> removeAll(Boolf<V> pred){
+        for(Entries<V> entries = entries(); entries.hasNext();){
+            if(pred.get(entries.next().value)) entries.remove();
+        }
+        return this;
+    }
+
+    /** @return the number of values matching the predicate. */
+    public int count(Boolf<V> pred){
+        int count = hasZeroValue && pred.get(zeroValue) ? 1 : 0;
+        int[] keyTable = this.keyTable;
+        V[] valueTable = this.valueTable;
+        for(int i = 0; i < keyTable.length; i++){
+            if(keyTable[i] != 0 && pred.get(valueTable[i])) count++;
+        }
+        return count;
+    }
+
+    /** @return whether all the values match the predicate. */
+    public boolean allMatch(Boolf<V> pred){
+        if(hasZeroValue && !pred.get(zeroValue)) return false;
+        int[] keyTable = this.keyTable;
+        V[] valueTable = this.valueTable;
+        for(int i = 0; i < keyTable.length; i++){
+            if(keyTable[i] != 0 && !pred.get(valueTable[i])) return false;
+        }
+        return true;
     }
 
     /** Creates a new map with an initial capacity of 51 and a load factor of 0.8. */

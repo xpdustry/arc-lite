@@ -36,8 +36,7 @@ public class DispatchListener implements NetListener {
 
   public synchronized void addListener(NetListener listener) {
     if(listener == null) throw new IllegalArgumentException("listener cannot be null.");
-    if (Structs.contains(listeners, listener)) return;
-    listeners = Structs.add(listeners, listener);
+    listeners = Structs.addUnique(listeners, listener);
   }
 
   public synchronized void removeListener(NetListener listener) {

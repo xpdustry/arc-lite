@@ -92,6 +92,37 @@ public class IntSet implements Iterable<Integer>{
         }
     }
 
+    public int sum(){
+        int sum = 0;
+        for(int key : keyTable){
+            sum += key;
+        }
+        return sum;
+    }
+
+    public int count(IntBoolf pred){
+        int count = hasZeroValue && pred.get(0) ? 1 : 0;
+        for(int key : keyTable){
+            if(key != 0 && pred.get(key)) count++;
+        }
+        return count;
+    }
+
+    public boolean allMatch(IntBoolf pred){
+        if(hasZeroValue && !pred.get(0)) return false;
+        for(int key : keyTable){
+            if(key != 0 && !pred.get(key)) return false;
+        }
+        return true;
+    }
+
+    public IntSet removeAll(IntBoolf pred){
+        for(IntSetIterator iterator = iterator(); iterator.hasNext;){
+            if(pred.get(iterator.nextInt())) iterator.remove();
+        }
+        return this;
+    }
+
     /**
      * Returns an index >= 0 and <= {@link #mask} for the specified {@code item}.
      * <p>
@@ -301,12 +332,7 @@ public class IntSet implements Iterable<Integer>{
     public boolean equals(Object obj){
         if(!(obj instanceof IntSet)) return false;
         IntSet other = (IntSet)obj;
-        if(other.size != size) return false;
-        if(other.hasZeroValue != hasZeroValue) return false;
-        int[] keyTable = this.keyTable;
-        for(int i = 0, n = keyTable.length; i < n; i++)
-            if(keyTable[i] != 0 && !other.contains(keyTable[i])) return false;
-        return true;
+        return other.size == size && allMatch(other::contains);
     }
 
     @Override

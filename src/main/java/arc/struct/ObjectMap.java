@@ -193,6 +193,36 @@ public class ObjectMap<K, V> implements Iterable<ObjectMap.Entry<K, V>>{
         }
     }
 
+    /** Removes the entries matching the predicate. */
+    public ObjectMap<K, V> removeAll(Boolf2<K, V> pred){
+        for(Entries<K, V> entries = entries(); entries.hasNext;){
+            Entry<K, V> entry = entries.next();
+            if(pred.get(entry.key, entry.value)) entries.remove();
+        }
+        return this;
+    }
+
+    /** @return the number of entries matching the predicate. */
+    public int count(Boolf2<K, V> pred){
+        int count = 0;
+        K[] keyTable = this.keyTable;
+        V[] valueTable = this.valueTable;
+        for(int i = 0; i < keyTable.length; i++){
+            if(keyTable[i] != null && pred.get(keyTable[i], valueTable[i])) count++;
+        }
+        return count;
+    }
+
+    /** @return whether all the entries match the predicate. */
+    public boolean allMatch(Boolf2<K, V> pred){
+        K[] keyTable = this.keyTable;
+        V[] valueTable = this.valueTable;
+        for(int i = 0; i < keyTable.length; i++){
+            if(keyTable[i] != null && !pred.get(keyTable[i], valueTable[i])) return false;
+        }
+        return true;
+    }
+
     public ObjectMap<K, V> copy(){
         return new ObjectMap<>(this);
     }

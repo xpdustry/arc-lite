@@ -173,12 +173,8 @@ public class Http{
         public ObjectMap<String, Seq<String>> getHeaders(){
             //convert between the struct types
             ObjectMap<String, Seq<String>> out = new ObjectMap<>();
-            Map<String, List<String>> fields = connection.getHeaderFields();
-            for(String key : fields.keySet()){
-                if(key != null){
-                    out.put(key, Seq.with(fields.get(key).toArray(new String[0])));
-                }
-            }
+            Structs.each(connection.getHeaderFields().entrySet(), e -> e.getKey() != null,
+                         e -> out.put(e.getKey(), Seq.with(e.getValue().toArray(new String[0]))));
             return out;
         }
 

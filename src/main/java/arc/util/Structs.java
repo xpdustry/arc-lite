@@ -164,6 +164,22 @@ public class Structs{
         return total;
     }
 
+    /** @return whether all the items match the predicate. */
+    public static <T> boolean all(Iterable<T> array, Boolf<T> value){
+        for(T t : array){
+            if(!value.get(t)) return false;
+        }
+        return true;
+    }
+
+    /** @return whether all the items match the predicate. */
+    public static <T> boolean all(T[] array, Boolf<T> value){
+        for(T t : array){
+            if(!value.get(t)) return false;
+        }
+        return true;
+    }
+
     public static <T> int max(Iterable<T> array, Intf<T> intifier){
         boolean first = true;
         int index = 0;
@@ -221,11 +237,11 @@ public class Structs{
     }
 
     public static <T> boolean contains(T[] array, Boolf<T> value){
-        return find(array, value) != null;
+        return indexOf(array, value) != -1;
     }
 
     public static <T> boolean contains(Iterable<T> array, Boolf<T> value){
-        return find(array, value) != null;
+        return indexOf(array, value) != -1;
     }
 
     public static <T> T find(T[] array, Boolf<T> value){
@@ -288,6 +304,10 @@ public class Structs{
         next[array.length] = item;
         System.arraycopy(array, 0, next, 0, array.length);
         return next;
+    }
+
+    public static <T> T[] addUnique(T[] array, T item){
+        return contains(array, item) ? array : add(array, item);
     }
 
     public static <T> T[] insert(T[] array, int index, T item){
@@ -354,6 +374,12 @@ public class Structs{
     /** Alias of {@link #forEach}. */
     public static <T> void each(Iterable<T> i, Cons<T> cons){
         forEach(i, cons);
+    }
+
+    public static <T> void each(Iterable<T> i, Boolf<T> pred, Cons<T> cons){
+        for(T t : i){
+            if(pred.get(t)) cons.get(t);
+        }
     }
 
     public static <T> void forEach(Iterable<T> i, Cons<T> cons){

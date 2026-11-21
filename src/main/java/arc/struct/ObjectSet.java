@@ -125,13 +125,33 @@ public class ObjectSet<T> implements Iterable<T>, Eachable<T>{
         }
     }
 
-    public T find(Boolf<T> predicate){
-        for(T t : this){
-            if(predicate.get(t)){
-                return t;
-            }
+    /** Removes the items matching the predicate. */
+    public ObjectSet<T> removeAll(Boolf<T> pred){
+        for(ObjectSetIterator<T> iterator = iterator(); iterator.hasNext;){
+            if(pred.get(iterator.next())) iterator.remove();
         }
-        return null;
+        return this;
+    }
+
+    /** @return the number of items matching the predicate. */
+    public int count(Boolf<T> pred){
+        int count = 0;
+        for(T key : keyTable){
+            if(key != null && pred.get(key)) count++;
+        }
+        return count;
+    }
+
+    /** @return whether all the items match the predicate. */
+    public boolean allMatch(Boolf<T> pred){
+        for(T key : keyTable){
+            if(key != null && !pred.get(key)) return false;
+        }
+        return true;
+    }
+
+    public T find(Boolf<T> predicate){
+        return Structs.find(this, predicate);
     }
 
     /**
@@ -368,11 +388,7 @@ public class ObjectSet<T> implements Iterable<T>, Eachable<T>{
     public boolean equals(Object obj){
         if(!(obj instanceof ObjectSet)) return false;
         ObjectSet other = (ObjectSet)obj;
-        if(other.size != size) return false;
-        T[] keyTable = this.keyTable;
-        for(int i = 0, n = keyTable.length; i < n; i++)
-            if(keyTable[i] != null && !other.contains(keyTable[i])) return false;
-        return true;
+        return other.size == size && allMatch(other::contains);
     }
 
     public String toString(){

@@ -54,10 +54,8 @@ public class HeadlessApplication implements Application{
     }
 
     void mainLoop(){
-        // Use an iterator in case of listeners added while initializing
-        for(ApplicationListener listener : listeners){
-            listener.init();
-        }
+        // Use a normal iterator in case of listeners added while initializing
+        for(ApplicationListener listener : listeners) listener.init();
 
         long t = Time.nanos() + renderInterval;
         if(renderInterval >= 0f){

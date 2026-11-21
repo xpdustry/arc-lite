@@ -68,6 +68,17 @@ public class IntIntMap implements Iterable<IntIntMap.Entry>{
         }
     }
 
+    /** @return the sum of all values. */
+    public int sum(){
+        int sum = hasZeroValue ? zeroValue : 0;
+        int[] keyTable = this.keyTable;
+        int[] valueTable = this.valueTable;
+        for(int i = 0; i < keyTable.length; i++){
+            if(keyTable[i] != 0) sum += valueTable[i];
+        }
+        return sum;
+    }
+
     /** Creates a new map with an initial capacity of 51 and a load factor of 0.8. */
     public IntIntMap(){
         this(51, 0.8f);

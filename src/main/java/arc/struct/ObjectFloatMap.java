@@ -236,6 +236,25 @@ public class ObjectFloatMap<K> implements Iterable<ObjectFloatMap.Entry<K>>{
         return i < 0 ? defaultValue : valueTable[i];
     }
 
+    /** @return the sum of all values. */
+    public float sum(){
+        float sum = 0;
+        K[] keyTable = this.keyTable;
+        float[] valueTable = this.valueTable;
+        for(int i = 0; i < keyTable.length; i++){
+            if(keyTable[i] != null) sum += valueTable[i];
+        }
+        return sum;
+    }
+
+    public float increment(K key){
+        return increment(key, 0, 1);
+    }
+
+    public float increment(K key, float increment){
+        return increment(key, 0, increment);
+    }
+
     /**
      * Returns the key's current value and increments the stored value. If the key is not in the map, defaultValue + increment is
      * put into the map and defaultValue is returned.
