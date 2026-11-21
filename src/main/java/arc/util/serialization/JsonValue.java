@@ -61,8 +61,8 @@ public class JsonValue implements Iterable<JsonValue>{
         set(value);
     }
 
-    /** 
-     * Makes a copy of this {@link JsonValue}. For json {@code array} or {@code object}, 
+    /**
+     * Makes a copy of this {@link JsonValue}. For json {@code array} or {@code object},
      * children are not copied, just referenced to the copy <br>
      * This doesn't copy {@link #parent}, {@link #prev} and {@link #next} references.
      */
@@ -71,11 +71,11 @@ public class JsonValue implements Iterable<JsonValue>{
             case stringValue:
                 return new JsonValue(stringValue);
             case doubleValue:
-                return new JsonValue(doubleValue);
+                return new JsonValue(doubleValue, stringValue);
             case longValue:
-                return new JsonValue(longValue);
+                return new JsonValue(longValue, stringValue);
             case booleanValue:
-                return new JsonValue(longValue != 0 ? true : false);
+                return new JsonValue(longValue != 0);
             case nullValue:
                 return new JsonValue(ValueType.nullValue);
             default:
@@ -85,7 +85,7 @@ public class JsonValue implements Iterable<JsonValue>{
                 return copy;
         }
     }
-    
+
     /**
      * Returns the child at the specified index. This requires walking the linked list to the specified entry, see
      * {@link JsonValue} for how to iterate efficiently.
@@ -606,7 +606,8 @@ public class JsonValue implements Iterable<JsonValue>{
     }
 
     private RuntimeException typeMismatch(String type){
-        return new IllegalStateException("\"" + (name == null ? "value" : name) + "\" should be a " + type + ", but it is a " + this.type + ".");
+        return new IllegalStateException("\"" + (name == null ? "value" : name) + "\" should be a "
+                                       + type + ", but it is a " + this.type + ".");
     }
 
     /**
@@ -943,7 +944,7 @@ public class JsonValue implements Iterable<JsonValue>{
             case nullValue:
                 return true;
             default:
-             return false;   
+             return false;
         }
     }
 
@@ -998,6 +999,22 @@ public class JsonValue implements Iterable<JsonValue>{
                 current = current.next;
             }
         }
+    }
+
+    /**
+     * Adds the specified value after the last specified child. <br>
+     * Unlike {@link #addChild(JsonValue)}, this avoids walking through the children if the last one is known.
+     */
+    public JsonValue addChild(@Nullable JsonValue last, JsonValue value){
+        value.parent = this;
+        size++;
+        if(last == null){
+            child = value;
+        }else{
+            last.next = value;
+            value.prev = last;
+        }
+        return value;
     }
 
     /**
@@ -1065,46 +1082,46 @@ public class JsonValue implements Iterable<JsonValue>{
     public void toJson(Writer writer, OutputType outputType) throws IOException{
         json(this, writer, outputType);
     }
-    
+
     private static void json(JsonValue object, Writer writer, OutputType outputType) throws IOException{
-        switch(object.type()){
-            case object:
-                if(object.child == null) writer.write("{}");
-                else{
-                    writer.write('{');
-                    for(JsonValue child = object.child; child != null; child = child.next){
-                      writer.write(outputType.quoteName(child.name));
-                      writer.write(':');
-                      json(child, writer, outputType);
-                      if(child.next != null) writer.write(',');
-                    }
-                    writer.write('}');
-                }
-                break;
-            case array:
-                if(object.child == null) writer.write("[]");
-                else{
-                    writer.write('[');
-                    for(JsonValue child = object.child; child != null; child = child.next){
-                        json(child, writer, outputType);
-                        if(child.next != null) writer.write(',');
-                    }
-                    writer.write(']');
-                }
-                break;
-            case stringValue: writer.write(outputType.quoteValue(object.asString())); break;
-            case doubleValue: writer.write(Double.toString(object.asDouble())); break;
-            case longValue: writer.write(Long.toString(object.asLong())); break;
-            case booleanValue: writer.write(Boolean.toString(object.asBoolean())); break;
+        if(!object.isObject() && !object.isArray()){
+            writeValue(object, writer, outputType);
+            return;
+        }
+
+        boolean isObject = object.isObject();
+        writer.write(isObject ? '{' : '[');
+        for(JsonValue child = object.child; child != null; child = child.next){
+            if(isObject){
+                writer.write(outputType.quoteName(child.name));
+                writer.write(':');
+            }
+            json(child, writer, outputType);
+            if(child.next != null) writer.write(',');
+        }
+        writer.write(isObject ? '}' : ']');
+    }
+
+    private static void writeValue(JsonValue value, Writer writer, OutputType outputType) throws IOException{
+        switch(value.type()){
+            case stringValue: writer.write(outputType.quoteValue(value.asString())); break;
+            case doubleValue: writer.write(Double.toString(value.asDouble())); break;
+            case longValue: writer.write(Long.toString(value.asLong())); break;
+            case booleanValue: writer.write(Boolean.toString(value.asBoolean())); break;
             case nullValue: writer.write("null"); break;
-            default: throw new SerializationException("Unknown object type: " + object);
+            default: throw new SerializationException("Unknown object type: " + value);
         }
     }
-      
+
     public String toString(){
         if(isValue()) return name == null ? asString() : name + ": " + asString();
         return (name == null ? "" : name + ": ") + prettyPrint(OutputType.minimal);
     }
+
+    @Deprecated
+    public String prettyPrint(OutputType outputType, int singleLineColumns){ return prettyPrint(outputType); }
+    @Deprecated
+    public String prettyPrint(PrettyPrintSettings settings){ return prettyPrint(settings.outputType); }
 
     public String prettyPrint(OutputType outputType){
         try{
@@ -1121,52 +1138,41 @@ public class JsonValue implements Iterable<JsonValue>{
     }
 
     private static void prettyPrint(JsonValue object, Writer writer, int indent, OutputType outputType) throws IOException{
-        switch (object.type()) {
-            case object:
-                if (object.child == null) writer.write("{}");
-                else {
-                    indent++;
-                    boolean newLines = needNewLine(object, 1);
-                    writer.write(newLines ? "{\n" : "{ ");
-                    for (JsonValue child = object.child; child != null; child = child.next) {
-                        if(newLines) writer.write(Strings.repeat("  ", indent));
-                        writer.write(outputType.quoteName(child.name));
-                        writer.write(": ");
-                        prettyPrint(child, writer, indent, outputType);
-                        if((!newLines || outputType != OutputType.minimal) && child.next != null) writer.append(',');
-                        writer.write(newLines ? '\n' : ' ');
-                    }
-                    if(newLines) writer.write(Strings.repeat("  ", indent - 1));
-                    writer.write('}');
-                }
-                break;
-            case array:
-                if(object.child == null) writer.write("[]");
-                else{
-                    indent++;
-                    boolean newLines = needNewLine(object, 1);
-                    writer.write(newLines ? "[\n" : "[ ");
-                    for(JsonValue child = object.child; child != null; child = child.next){
-                        if(newLines) writer.write(Strings.repeat("  ", indent));
-                        prettyPrint(child, writer, indent, outputType);
-                        if((!newLines || outputType != OutputType.minimal) && child.next != null) writer.append(',');
-                        writer.write(newLines ? '\n' : ' ');
-                    }
-                    if(newLines) writer.append(Strings.repeat("  ", indent - 1));
-                    writer.write(']');
-                }
-                break;
-            case stringValue: writer.write(outputType.quoteValue(object.asString())); break;
-            case doubleValue: writer.write(Double.toString(object.asDouble())); break;
-            case longValue: writer.write(Long.toString(object.asLong())); break;
-            case booleanValue: writer.write(Boolean.toString(object.asBoolean())); break;
-            case nullValue: writer.write("null"); break;
-            default: throw new SerializationException("Unknown object type: " + object);
-      }
+        if(!object.isObject() && !object.isArray()){
+            writeValue(object, writer, outputType);
+            return;
+        }
+
+        boolean isObject = object.isObject();
+        if(object.child == null){
+            writer.write(isObject ? "{}" : "[]");
+            return;
+        }
+
+        indent++;
+        boolean newLines = needNewLine(object, 1);
+        writer.write(isObject ? '{' : '[');
+        writer.write(newLines ? '\n' : ' ');
+        for(JsonValue child = object.child; child != null; child = child.next){
+            if(newLines) indent(writer, indent);
+            if(isObject){
+                writer.write(outputType.quoteName(child.name));
+                writer.write(": ");
+            }
+            prettyPrint(child, writer, indent, outputType);
+            if((!newLines || outputType != OutputType.minimal) && child.next != null) writer.write(',');
+            writer.write(newLines ? '\n' : ' ');
+        }
+        if(newLines) indent(writer, indent - 1);
+        writer.write(isObject ? '}' : ']');
+    }
+
+    private static void indent(Writer writer, int indent) throws IOException{
+        for(int i = 0; i < indent; i++) writer.write("  ");
     }
 
     private static boolean needNewLine(JsonValue object, int maxChildren){
-      for (JsonValue child = object.child; child != null; child = child.next) 
+      for (JsonValue child = object.child; child != null; child = child.next)
           if (child.isObject() || child.isArray() || --maxChildren < 0) return true;
       return false;
     }
@@ -1201,6 +1207,13 @@ public class JsonValue implements Iterable<JsonValue>{
 
     public enum ValueType{
         object, array, stringValue, doubleValue, longValue, booleanValue, nullValue
+    }
+
+    @Deprecated
+    public static class PrettyPrintSettings{
+        public OutputType outputType;
+        public int singleLineColumns;
+        public boolean wrapNumericArrays;
     }
 
     public class JsonIterator implements Iterator<JsonValue>, Iterable<JsonValue>{

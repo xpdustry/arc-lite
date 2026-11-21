@@ -7,6 +7,7 @@ import java.nio.channels.*;
 
 import arc.util.Disposable;
 import arc.util.Time;
+import arc.util.io.Streams;
 import arc.util.pooling.ByteBufferPool;
 
 /**
@@ -27,6 +28,10 @@ public class TcpConnection implements Disposable{
     private final Object writeLock = new Object();
     private volatile boolean readPaused, disposed;
     private volatile SocketChannel connectingChannel;
+
+    public TcpConnection(NetSerializer serialization, int writeBufferSize, int objectBufferSize){
+        this(serialization, writeBufferSize, objectBufferSize, false);
+    }
 
     public TcpConnection(NetSerializer serialization, int writeBufferSize, int objectBufferSize, boolean direct){
         this.serialization = serialization;
@@ -86,11 +91,7 @@ public class TcpConnection implements Disposable{
             lastReadTime = lastWriteTime = Time.millis();
         }catch(IOException | RuntimeException ex){
             connectingChannel = null;
-            if(socketChannel != null){
-                try{
-                    socketChannel.close();
-                }catch(IOException ignored){}
-            }
+            Streams.close(socketChannel);
             close();
             if(ex instanceof RuntimeException) throw (RuntimeException)ex;
             throw new IOException("Unable to connect to: " + remoteAddress, ex);
@@ -276,19 +277,13 @@ public class TcpConnection implements Disposable{
         readPaused = false;
         // Interrupt #connect()
         SocketChannel connecting = connectingChannel;
-        if(connecting != null){
-            connectingChannel = null;
-            try{
-                connecting.close();
-            }catch(IOException ignored){}
-        }
+        connectingChannel = null;
+        Streams.close(connecting);
 
         SocketChannel socketChannel = this.socketChannel;
         if(socketChannel == null) return;
         this.socketChannel = null;
-        try{
-            socketChannel.close();
-        }catch(IOException ignored){}
+        Streams.close(socketChannel);
         SelectionKey key = selectionKey;
         if(key != null) key.selector().wakeup();
     }

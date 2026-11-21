@@ -226,7 +226,7 @@ public class Pixmaps{
                         int nx = x + offsets[i];
                         int ny = y + offsets[i + 1];
                         int index = (ny*w + nx)*4;
-                        if(nx >= 0 && ny >= 0 && nx < w && ny < h && pixels.get(index + 3) != 0){
+                        if(Structs.inBounds(nx, ny, w, h) && pixels.get(index + 3) != 0){
                             r += pixels.get(index) & 0xff;
                             g += pixels.get(index + 1) & 0xff;
                             b += pixels.get(index + 2) & 0xff;

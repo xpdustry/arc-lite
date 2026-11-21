@@ -19,6 +19,26 @@ public class Reflect{
         return type == Byte.class || type == Short.class || type == Integer.class || type == Long.class || type == Character.class || type == Boolean.class || type == Float.class || type == Double.class;
     }
 
+    /** @return whether the type is a primitive, a wrapper of a primitive, or a String. */
+    public static boolean isValueType(Class<?> type){
+        return type != null && (type.isPrimitive() || type == String.class || isWrapper(type));
+    }
+
+    /** @return the wrapper class of a primitive type, else the type itself. */
+    public static <T> Class<T> box(Class<T> type){
+        return type == null || !type.isPrimitive() ? type : (Class<T>)(
+            type == int.class ? Integer.class :
+            type == float.class ? Float.class :
+            type == long.class ? Long.class :
+            type == double.class ? Double.class :
+            type == boolean.class ? Boolean.class :
+            type == byte.class ? Byte.class :
+            type == short.class ? Short.class :
+            type == char.class ? Character.class :
+            Void.class
+        );
+    }
+
     public static <T> Prov<T> cons(Class<T> type){
         try{
             Constructor<T> c = type.getDeclaredConstructor();

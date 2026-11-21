@@ -5,6 +5,7 @@ package arc.net;
 import arc.func.*;
 import arc.net.FrameworkMessage.*;
 import arc.util.*;
+import arc.util.io.Streams;
 import arc.util.pooling.ByteBufferPool;
 
 import java.io.*;
@@ -13,6 +14,7 @@ import java.nio.*;
 import java.nio.channels.*;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Represents a TCP and optionally a UDP connection to a {@link Server}.
@@ -162,20 +164,9 @@ public class Client extends Connection implements EndPoint{
                 tcp.connect(selector, new InetSocketAddress(host, tcpPort), timeout);
             }
 
-            // Wait for RegisterTCP.
-            synchronized(tcpRegistrationLock){
-                while(!tcpRegistered && connecting && Time.nanos() - endTime < 0){
-                    try{
-                        tcpRegistrationLock.wait(100);
-                    }catch(InterruptedException ignored){}
-                }
-                if(!tcpRegistered){
-                    if(!connecting) throw new SocketException("Connection closed while connecting.");
-                    throw new SocketTimeoutException(
-                    "Connected, but timed out during TCP registration.\n"
-                    + "Note: Client#update must be called in a separate thread during connect.");
-                }
-            }
+            awaitRegistration(false, endTime, null,
+            "Connected, but timed out during TCP registration.\n"
+            + "Note: Client#update must be called in a separate thread during connect.");
 
             if(udpPort == -1) return;
             InetSocketAddress udpAddress = new InetSocketAddress(host, udpPort);
@@ -185,29 +176,35 @@ public class Client extends Connection implements EndPoint{
                 udp.connect(selector, udpAddress);
             }
 
-            // Wait for RegisterUDP reply.
-            synchronized(udpRegistrationLock){
-                while(!udpRegistered && connecting && Time.nanos() - endTime < 0){
-                    RegisterUDP registerUDP = new RegisterUDP();
-                    registerUDP.connectionID = id;
-                    udp.send(registerUDP, udpAddress);
-                    try{
-                        udpRegistrationLock.wait(100);
-                    }catch(InterruptedException ignored){}
-                }
-                if(!udpRegistered){
-                    if(!connecting) throw new SocketException("Connection closed while connecting.");
-                    throw new SocketTimeoutException(
-                    "Connected, but timed out during UDP registration: "
-                    + host + ":" + udpPort);
-                }
-            }
+            awaitRegistration(true, endTime, udpAddress, "Connected, but timed out during UDP registration: " + host + ":" + udpPort);
         }catch(IOException ex){
             close();
             throw ex;
         }finally{
             connecting = false;
         }
+    }
+
+    private void awaitRegistration(boolean udp, long endTime, InetSocketAddress udpAddress, String timeoutMessage) throws IOException{
+        Object lock = udp ? udpRegistrationLock : tcpRegistrationLock;
+        synchronized(lock){
+            while(!isRegistered(udp) && connecting && Time.nanos() - endTime < 0){
+                if(udp){
+                    RegisterUDP registerUDP = new RegisterUDP();
+                    registerUDP.connectionID = id;
+                    this.udp.send(registerUDP, udpAddress);
+                }
+                Threads.waitQuietly(lock, 100);
+            }
+            if(!isRegistered(udp)){
+                if(!connecting) throw new SocketException("Connection closed while connecting.");
+                throw new SocketTimeoutException(timeoutMessage);
+            }
+        }
+    }
+
+    private boolean isRegistered(boolean udp){
+        return udp ? udpRegistered : tcpRegistered;
     }
 
     /**
@@ -267,11 +264,7 @@ public class Client extends Connection implements EndPoint{
             else if(emptySelects >= 100){
                 emptySelects = 0;
                 // Only wait if it's happening within 2ms
-                if(timeout > 0 && now - emptySelectsStart < 2_000_000L){
-                    try{
-                        Thread.sleep(1);
-                    }catch(InterruptedException ignored){}
-                }
+                if(timeout > 0 && now - emptySelectsStart < 2_000_000L) Threads.sleepQuietly(1);
             }
         }else emptySelects = 0;
         Set<SelectionKey> keys = selector.selectedKeys();
@@ -313,28 +306,28 @@ public class Client extends Connection implements EndPoint{
                 id = ((RegisterTCP)object).connectionID;
                 // We only want TCP, resend the packet to finish connecting
                 if(udp == null) tcp.send(object);
-                synchronized(tcpRegistrationLock){
-                    tcpRegistered = true;
-                    tcpRegistrationLock.notifyAll();
-                    if(udp == null) setConnected(true);
-                }
-                if(udp == null) notifyConnected();
+                registered(false, udp == null);
             }
             return true;
         }else if(udp != null && !udpRegistered){
-            if(object instanceof RegisterUDP){
-                synchronized(udpRegistrationLock){
-                    udpRegistered = true;
-                    udpRegistrationLock.notifyAll();
-                    setConnected(true);
-                }
-                notifyConnected();
-            }
+            if(object instanceof RegisterUDP) registered(true, true);
             return true;
         }
 
         notifyReceived(object);
         return true;
+    }
+
+    /** Wakes up {@link #awaitRegistration}, and notifies the listeners. */
+    private void registered(boolean udp, boolean connected){
+        Object lock = udp ? udpRegistrationLock : tcpRegistrationLock;
+        synchronized(lock){
+            if(udp) udpRegistered = true;
+            else tcpRegistered = true;
+            lock.notifyAll();
+            if(connected) setConnected(true);
+        }
+        if(connected) notifyConnected();
     }
 
     protected boolean doSelectUDP(UdpConnection udp){
@@ -408,9 +401,7 @@ public class Client extends Connection implements EndPoint{
         }
         if(alive){
             selector.wakeup();
-            try{
-                thread.join(5000);
-            }catch(InterruptedException ignored){}
+            Threads.joinQuietly(thread, 5000);
         }
 
         starting = true;
@@ -469,9 +460,7 @@ public class Client extends Connection implements EndPoint{
                 tcp.dispose();
                 UdpConnection udp = this.udp;
                 if(udp != null) udp.dispose();
-                try{
-                    selector.close();
-                }catch(IOException ignored){}
+                Streams.close(selector);
             }
         }
     }
@@ -527,28 +516,18 @@ public class Client extends Connection implements EndPoint{
      */
     public void discoverHosts(int udpPort, String multicastGroup, int multicastPort, int timeoutMillis,
                               Cons<DatagramPacket> handler, Runnable done){
-        final boolean[] isDone = {false};
-        // Only create the pool at first usage
         if(discoverExecutor == null) discoverExecutor = Threads.unboundedExecutor("Server Discovery");
+        AtomicInteger searches = new AtomicInteger(2);
 
         //broadcast
         discoverExecutor.submit(() -> {
             try(DatagramSocket socket = new DatagramSocket()){
                 socket.setBroadcast(true);
                 broadcast(udpPort, socket);
-                socket.setSoTimeout(timeoutMillis);
-                while(true){
-                    DatagramPacket packet = discoveryPacket.get();
-                    socket.receive(packet);
-                    handler.get(packet);
-                }
+                receiveHosts(socket, timeoutMillis, handler);
+                return null;
             }finally{
-                synchronized(isDone){
-                    if(!isDone[0]){
-                        isDone[0] = true;
-                        done.run();
-                    }
-                }
+                if(searches.decrementAndGet() == 0) done.run();
             }
         });
 
@@ -561,21 +540,22 @@ public class Client extends Connection implements EndPoint{
 
                 socket.send(new DatagramPacket(data.array(), data.arrayOffset(), data.remaining(),
                             InetAddress.getByName(multicastGroup), multicastPort));
-                socket.setSoTimeout(timeoutMillis);
-                while(true){
-                    DatagramPacket packet = discoveryPacket.get();
-                    socket.receive(packet);
-                    handler.get(packet);
-                }
+                receiveHosts(socket, timeoutMillis, handler);
+                return null;
             }finally{
                 ByteBufferPool.free(data);
-                synchronized(isDone){
-                    if(!isDone[0]){
-                        isDone[0] = true;
-                        done.run();
-                    }
-                }
+                if(searches.decrementAndGet() == 0) done.run();
             }
         });
+    }
+
+    /** Gives the received packets to the handler, until the timeout ends the search with an exception. */
+    private void receiveHosts(DatagramSocket socket, int timeoutMillis, Cons<DatagramPacket> handler) throws IOException{
+        socket.setSoTimeout(timeoutMillis);
+        while(true){ //read until error?
+            DatagramPacket packet = discoveryPacket.get();
+            socket.receive(packet);
+            handler.get(packet);
+        }
     }
 }

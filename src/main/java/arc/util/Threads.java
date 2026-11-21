@@ -108,6 +108,27 @@ public class Threads{
         }
     }
 
+    /** Ignores interruptions. */
+    public static void sleepQuietly(long ms){
+        try{
+            Thread.sleep(ms);
+        }catch(InterruptedException ignored){}
+    }
+
+    /** Ignores interruptions. */
+    public static void joinQuietly(Thread thread, long ms){
+        try{
+            thread.join(ms);
+        }catch(InterruptedException ignored){}
+    }
+
+    /** Ignores an interruption. Must be called while holding the lock. */
+    public static void waitQuietly(Object lock, long ms){
+        try{
+            lock.wait(ms);
+        }catch(InterruptedException ignored){}
+    }
+
     //this creates an implicit dependency to all the framework...
     /** Throws an exception in the main game thread.*/
     public static void throwAppException(Throwable t){

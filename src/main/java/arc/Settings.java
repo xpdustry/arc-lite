@@ -1,7 +1,9 @@
 package arc;
 
 import arc.files.*;
+import arc.func.*;
 import arc.util.*;
+import arc.util.serialization.*;
 
 public class Settings extends JsonSettings{
     protected Fi dataDirectory;
@@ -19,89 +21,21 @@ public class Settings extends JsonSettings{
         appName = name;
     }
 
-    /**
-     * Set whether the data should autosave immediately upon changing a value.
-     * Default value: true.
-     * @deprecated Use {@link #setAutosaved(boolean)} instead.
-     */
-    @Deprecated
-    public void setAutosave(boolean autosave){
-        setAutosaved(autosave);
+    @Override
+    public Fi file(){
+        return getSettingsFile();
     }
 
     @Override
-    public void setAutosaved(boolean autosave){
-        autosaved = autosave;
-    }
-
-    /**
-     * Manually save, if the settings have been loaded at some point.
-     *
-     * @deprecated Use {@link #save()} instead.
-     */
-    @Deprecated
-    public void manualSave(){
-        save();
-    }
-
-    /**
-     * Saves if any modifications were done.
-     *
-     * @deprecated This is useless.
-     */
-    @Deprecated
-    public void autosave(){
-        if(autosaved) save();
-    }
-
-    /**
-     * Loads a settings file into {@link #values} using the specified appName.
-     *
-     * @deprecated Just for compatibility.
-     */
-    @Deprecated
-    public void loadValues(){
-        loadValues(file());
-    }
-
-    /**
-     * @deprecated Just for compatibility.
-     *
-     * Saves all entries from {@link #values} into the correct location.
-     */
-    @Deprecated
-    public void saveValues(){
-        saveValues(file());
-    }
-
-    /**
-     * @deprecated Just for compatibility. Use {@link #file()} instead.
-     *
-     * Returns the file used for writing settings to. Not available on all platforms!
-     */
-    @Deprecated
-    public Fi getSettingsFile(){
-        return file();
-    }
-
-    /** @deprecated Not used. */
-    @Deprecated
-    public Fi getBackupFolder(){
-        return getDataDirectory().child("settings_backups");
-    }
-
-    /** @deprecated Just for compatibility. Use {@link #backupFile()} instead. */
-    @Deprecated
-    public Fi getBackupSettingsFile(){
-        return backupFile();
-    }
-
-    public Fi file(){
-        return getDataDirectory().child("settings." + (plainJson ? "json" : "bin"));
-    }
-
     public Fi backupFile(){
-        return getDataDirectory().child("settings_backup." + (plainJson ? "json" : "bin"));
+        return getBackupSettingsFile();
+    }
+
+    private Fi file(boolean isBackup, boolean withExt){
+        String name = "settings";
+        if (isBackup) name += "_backup";
+        if (withExt) name += "." + (plainJson ? "json" : "bin");
+        return getDataDirectory().child(name);
     }
 
     /** Returns the directory where all settings and data is placed. */
@@ -115,11 +49,48 @@ public class Settings extends JsonSettings{
         this.dataDirectory = file;
     }
 
-    /** @deprecated Just for compatibility. Use {@link #size()} instead. */
+    /** @deprecated Use {@link #getJson()} instead. */
+    @Deprecated public void setJson(Json json){ this.json = json; }
+    /** @deprecated Use {@link #setAutosaved(boolean)} instead. instead. */
+    @Deprecated public void setAutosave(boolean autosave){ setAutosaved(autosave); }
+    @Override public void setAutosaved(boolean autosave){ autosaved = autosave; }
+    /** @deprecated Use {@link #save()} instead. instead. */
+    @Deprecated public void manualSave(){ save(); }
+    @Deprecated public void autosave(){ if(autosaved) save(); }
+    @Deprecated public void loadValues(){ loadValues(file()); }
+    @Deprecated public void saveValues(){ saveValues(file()); }
+    /** @deprecated Use {@link #file()} instead. instead. */
+    @Deprecated public Fi getSettingsFile(){ return file(false, true); }
+    @Deprecated public Fi getBackupFolder(){ return file(true, false); }
+    /** @deprecated Use {@link #backupFile()} instead. instead. */
+    @Deprecated public Fi getBackupSettingsFile(){ return file(true, true); }
+    /** @deprecated Use {@link #size()} instead. instead. */
+    @Deprecated public int keySize(){ return size(); }
+    /** @deprecated Use {@link #modified()} instead. */
+    @Deprecated public boolean isModified(){ return modified(); }
+    /** @deprecated Use {@link #get(String, Class, Prov)} instead. */
     @Deprecated
-    public int keySize(){
-        return size();
+    public Object get(String name, Object def){
+        return has(name) ? get(name, def == null ? null : def.getClass()) : def;
     }
-
-    //TODO: put/get bytes/json
+    /** @deprecated Use {@link #get(String, Class, Prov)} instead. */
+    @Deprecated public byte[] getBytes(String name){ return getBytes(name, (byte[])getDefault(name)); }
+    /** @deprecated Use {@link #get(String, Class, Prov)} instead. */
+    @Deprecated public byte[] getBytes(String name, byte[] def){ return has(name) ? get(name, byte[].class) : def; }
+    /** @deprecated Use {@link #put(String, Object)} instead. */
+    @Deprecated public void putJson(String name, Object value){ put(name, value); }
+    /** @deprecated Use {@link #put(String, Class, Object)} instead. */
+    @Deprecated public void putJson(String name, Class<?> elementType, Object value){ put(name, elementType, value); }
+    /** @deprecated Use {@link #get(String, Class, Prov)} instead. */
+    @Deprecated public <T> T getJson(String name, Class<T> type, Prov<T> def){ return getJson(name, type, null, def); }
+    /** @deprecated Use {@link #get(String, Class, Class, Prov)} instead. */
+    @Deprecated
+    public <T> T getJson(String name, Class<T> type, Class<?> elementType, Prov<T> def){
+        try{
+            return get(name, type, elementType, def);
+        }catch(Throwable e){
+            Log.err("Error reading JSON with key '" + name + "'", e);
+            return def.get();
+        }
+    }
 }

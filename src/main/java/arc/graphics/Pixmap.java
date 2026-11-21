@@ -119,7 +119,7 @@ public class Pixmap implements Disposable{
 
     /** @return whether this point is in the pixmap. */
     public boolean in(int x, int y){
-        return x >= 0 && y >= 0 && x < width && y < height;
+        return Structs.inBounds(x, y, width, height);
     }
 
     public Pixmap crop(int x, int y, int width, int height){
@@ -613,7 +613,21 @@ public class Pixmap implements Disposable{
         pixels.putInt((x + y * width) * 4, color);
     }
 
-    /** @return the direct {@link ByteBuffer} holding the pixel data. */
+    @Deprecated
+    public int getGLFormat(){
+        return 0x1908; // GL_RGBA
+    }
+
+    @Deprecated
+    public int getGLInternalFormat(){
+        return 0x1908; // GL_RGBA
+    }
+
+    @Deprecated
+    public int getGLType(){
+        return 0x1401; // GL_UNSIGNED_BYTE
+    }
+
     public ByteBuffer getPixels(){
         return pixels;
     }

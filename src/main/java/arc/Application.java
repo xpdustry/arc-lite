@@ -99,6 +99,13 @@ public interface Application extends Disposable{
         return Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory();
     }
 
+    // Here just for compatibility
+    @Deprecated default long getNativeHeap(){ return 0; }
+    @Deprecated default @Nullable String getClipboardText(){ return null; }
+    @Deprecated default void setClipboardText(String text){}
+    @Deprecated default boolean openFolder(String file){ return false; }
+    @Deprecated default boolean openURI(String URI){ return false; }
+
     /** @return the main graphics thread, upon which all ApplicationListener methods are called. May return null if not initialized. */
     default @Nullable Thread getMainThread(){
         return null;

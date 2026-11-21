@@ -22,9 +22,7 @@ public abstract class ApplicationCore implements ApplicationListener{
 
     @Override
     public void resize(int width, int height){
-        for(ApplicationListener listener : modules){
-            listener.resize(width, height);
-        }
+        Structs.each(listener -> listener.resize(width, height), modules);
     }
 
     @Override
@@ -49,8 +47,6 @@ public abstract class ApplicationCore implements ApplicationListener{
 
     @Override
     public void fileDropped(Fi file){
-        for(ApplicationListener listener : modules){
-            listener.fileDropped(file);
-        }
+        Structs.each(listener -> listener.fileDropped(file), modules);
     }
 }

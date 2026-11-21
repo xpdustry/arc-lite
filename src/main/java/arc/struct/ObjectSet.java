@@ -237,9 +237,7 @@ public class ObjectSet<T> implements Iterable<T>, Eachable<T>{
     }
 
     public void removeAll(T[] array){
-        for(T t : array){
-            remove(t);
-        }
+        Structs.each(this::remove, array);
     }
 
     public void removeAll(Seq<? extends T> array){

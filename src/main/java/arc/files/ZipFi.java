@@ -72,14 +72,6 @@ public class ZipFi extends Fi{
         }
     }
 
-    private static int countSlashes(String str){
-        int sum = 0;
-        for(int i = 0; i < str.length(); i++){
-            if(str.charAt(i) == '/') sum ++;
-        }
-        return sum;
-    }
-
     private ZipFi(ZipEntry entry, ZipFile file, Seq<ZipFi> allFiles, Seq<ZipFi> allDirectories){
         super(new File(entry.getName()), FileType.absolute);
         this.allDirectories = allDirectories;
@@ -147,7 +139,7 @@ public class ZipFi extends Fi{
         return dir != file
             && file.path().startsWith(dir.path())
             && (file.path().substring(1 + dir.path().length()).indexOf('/') == -1 || //do not allow extra slashes in the path
-            (file.path().endsWith("/") && countSlashes(file.path().substring(1 + dir.path().length())) == 1));
+            (file.path().endsWith("/") && Strings.count(file.path().substring(1 + dir.path().length()), '/') == 1));
     }
 
     @Override

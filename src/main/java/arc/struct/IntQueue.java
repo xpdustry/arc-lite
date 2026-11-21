@@ -324,7 +324,7 @@ public class IntQueue implements Iterable<Integer>{
         for(int s = 0; s < size; s++){
             final int value = values[index];
             hash *= 31;
-            hash += Integer.hashCode(value);
+            hash += value;
             index++;
             if(index == backingLength) index = 0;
         }

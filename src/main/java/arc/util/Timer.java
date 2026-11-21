@@ -265,7 +265,7 @@ public class Timer{
             }
         }
 
-        /** Reschelude this task in future. Does nothing if task was previously canceled or finished. */
+        /** Reschedules this task with its delay from now. Does nothing if the task was cancelled or is finished. */
         public void reschedule(){
             synchronized(this){
                 if(timer == null) return;
@@ -335,10 +335,7 @@ public class Timer{
 
                     if(thread != this || files != Core.files) break;
 
-                    try{
-                        if(waitMillis > 0) threadLock.wait(waitMillis);
-                    }catch(InterruptedException ignored){
-                    }
+                    if(waitMillis > 0) Threads.waitQuietly(threadLock, waitMillis);
                 }
             }
             dispose();
@@ -349,8 +346,7 @@ public class Timer{
             if(Core.app.isDesktop()) return;
             synchronized(threadLock){
                 long delayMillis = Time.nanosMillis() - pauseMillis;
-                for(int i = 0, n = instances.size; i < n; i++)
-                    instances.get(i).delay(delayMillis);
+                instances.each(timer -> timer.delay(delayMillis));
                 pauseMillis = 0;
                 threadLock.notifyAll();
             }

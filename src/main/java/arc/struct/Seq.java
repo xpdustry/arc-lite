@@ -1110,7 +1110,7 @@ public class Seq<T> implements Iterable<T>, Eachable<T>{
         for(int i = 0; i < n; i++){
             Object o1 = items1[i];
             Object o2 = items2[i];
-            if(!(o1 == null ? o2 == null : o1.equals(o2))) return false;
+            if(!Structs.eq(o1, o2)) return false;
         }
         return true;
     }

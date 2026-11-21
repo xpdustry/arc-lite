@@ -78,7 +78,7 @@ public class PerformanceCounter{
      */
     public void stop(){
         if(startTime > 0L){
-            current += (Time.nanos() - startTime) * nano2seconds;
+            current += Time.sinceNanos(startTime) * nano2seconds;
             startTime = 0L;
             valid = true;
         }

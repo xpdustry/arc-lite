@@ -210,6 +210,12 @@ public class ShortSeq implements Iterable<Short>{
         return -1;
     }
 
+    /** @deprecated use {@link #lastIndexOf(short)} */
+    @Deprecated
+    public int lastIndexOf(char value){
+        return lastIndexOf((short)value);
+    }
+
     public boolean removeValue(short value){
         short[] items = this.items;
         for(int i = 0, n = size; i < n; i++){

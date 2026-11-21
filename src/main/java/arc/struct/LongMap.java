@@ -704,7 +704,7 @@ public class LongMap<V> implements Iterable<LongMap.Entry<V>>{
             return hasNext;
         }
 
-        /** Boxed version of {@link #nextKey()}, for {@link Iterator} compatibility. */
+        //NOTE: incompatible with standard arc
         @Override
         public Long next(){
             return nextKey();

@@ -83,14 +83,11 @@ public class ColorCodes{
     }
 
     public static String apply(String text, boolean useColors){
-        if(useColors){
-            for(int i = 0; i < codes.length; i++)
-                text = text.replace(prefix + codes[i], values[i]);
-        }else{
-            for(String color : codes)
-                text = text.replace(prefix + color, "");
-        }
-        return text;
+        if(text.indexOf(prefix) == -1) return text;
+        StringBuilder builder = new StringBuilder(text);
+        for(int i = 0; i < codes.length; i++)
+            Strings.replace(builder, prefix + codes[i], useColors ? values[i] : "");
+        return builder.toString();
     }
 
     //////////
@@ -103,7 +100,7 @@ public class ColorCodes{
         if (!jansiPresent()) return false;
         if (enable()) return true;
         // At this point we cannot use arc.util.Log
-        System.out.print("WARNING: Failed to enable ANSI colors: " + getLastError());
+        System.out.println("WARNING: Failed to enable ANSI colors: " + getLastError());
         return false;
     }
 
@@ -117,9 +114,9 @@ public class ColorCodes{
     }
 
     private static boolean enable(){
-        return enable(STD_INPUT_HANDLE)
-            && enable(STD_OUTPUT_HANDLE)
-            && enable(STD_ERROR_HANDLE);
+        boolean output = enable(STD_OUTPUT_HANDLE);
+        enable(STD_ERROR_HANDLE); // Optional
+        return output;
     }
 
     private static boolean enable(final int hConsoleHandle){
@@ -134,7 +131,7 @@ public class ColorCodes{
         final int bufferSize = 160;
         final byte data[] = new byte[bufferSize];
         FormatMessageW(FORMAT_MESSAGE_FROM_SYSTEM, 0, errorCode, 0, data, bufferSize, null);
-        return new String(data);
+        return new String(data, java.nio.charset.StandardCharsets.UTF_16LE).trim();
     }
 
     //////////

@@ -21,7 +21,6 @@ package arc.util;
 import arc.Application;
 import arc.ApplicationListener;
 import arc.func.Cons2;
-import arc.struct.Seq;
 
 
 /** Save periodically the registered {@link Saveable}s and also when the application exit. */
@@ -43,25 +42,28 @@ public class Autosaver {
     add(saveable, SavePriority.normal);
   }
 
-  public static void add(Saveable saveable, SavePriority priority) {
+  public static synchronized void add(Saveable saveable, SavePriority priority) {
     remove(saveable);
-    priority.saves.add(saveable);
+    priority.saves = Structs.add(priority.saves, saveable);
   }
 
-  public static void remove(Saveable saveable) {
+  public static synchronized void remove(Saveable saveable) {
     for (SavePriority p : SavePriority.all) {
-      if (p.saves.remove(saveable)) break;
+      Saveable[] saves = Structs.remove(p.saves, saveable);
+      if (saves == p.saves) continue;
+      p.saves = saves;
+      break;
     }
   }
 
   /** Don't do that! */
   public static void clear() {
-    for (SavePriority p : SavePriority.all) clear(p);
+    Structs.each(Autosaver::clear, SavePriority.all);
   }
 
   /** Don't do that! */
-  public static void clear(SavePriority priority) {
-    priority.saves.clear();
+  public static synchronized void clear(SavePriority priority) {
+    priority.saves = new Saveable[0];
   }
 
   public static boolean has(Saveable saveable) {
@@ -69,50 +71,42 @@ public class Autosaver {
   }
 
   public static boolean has(Saveable saveable, SavePriority priority) {
-    return priority.saves.contains(saveable);
+    return Structs.contains(priority.saves, saveable);
   }
 
   public static SavePriority priorityOf(Saveable saveable) {
-    for (SavePriority p : SavePriority.all) {
-      if (has(saveable, p)) return p;
-    }
-    return null;
+    return Structs.find(SavePriority.all, p -> has(saveable, p));
   }
 
   public static boolean saveNeeded() {
-    for (SavePriority p : SavePriority.all) {
-      if (p.saves.contains(Saveable::modified)) return true;
-    }
-    return false;
+    return Structs.contains(SavePriority.all, p -> Structs.contains(p.saves, Saveable::modified));
   }
 
   /** Save all registered things now, only if modified. */
   public static boolean save() {
-    if (!saveNeeded()) return false;
-    for (SavePriority p : SavePriority.all) {
-      p.saves.each(Saveable::modified, s -> {
-        try { s.save(); }
-        catch (Throwable t) {
-          Log.err("Failed to save " + s.name(), t);
-          if (errorHandler != null) errorHandler.get(s, t);
-        }
-      });
-    }
-    return true;
+    boolean needed = saveNeeded();
+    if (needed) saveAll(false);
+    return needed;
   }
 
   /** Save all registered things now, even not modified. */
-  public static boolean forceSave() {
+  public static void forceSave() {
+    saveAll(true);
+  }
+
+  private static void saveAll(boolean force) {
     for (SavePriority p : SavePriority.all) {
-      p.saves.each(s -> {
-        try { s.forceSave(); }
-        catch (Throwable t) {
+      for (Saveable s : p.saves) {
+        if (!force && !s.modified()) continue;
+        try {
+          if (force) s.forceSave();
+          else s.save();
+        } catch (Throwable t) {
           Log.err("Failed to save " + s.name(), t);
           if (errorHandler != null) errorHandler.get(s, t);
         }
-      });
+      }
     }
-    return true;
   }
 
 
@@ -138,6 +132,6 @@ public class Autosaver {
     static final SavePriority[] all = values();
     // More simple to store the saveable things here.
     // Because the priority should not be modified after registration.
-    final Seq<Saveable> saves = new Seq<>();
+    volatile Saveable[] saves = {};
   }
 }

@@ -61,7 +61,7 @@ public class ArrayMap<K, V> implements Iterable<ObjectMap.Entry<K, V>>{
 
     /** Creates an ordered map with {@link #keys} and {@link #values} of the specified type and a capacity of 16. */
     public ArrayMap(Class<?> keyArrayType, Class<?> valueArrayType){
-        this(false, 16, keyArrayType, valueArrayType);
+        this(true, 16, keyArrayType, valueArrayType);
     }
 
     /**

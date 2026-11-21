@@ -704,6 +704,12 @@ public class IntMap<V> implements Iterable<IntMap.Entry<V>>{
             return toSeq(new Seq<>(true, map.size));
         }
 
+        /** @deprecated use {@link #toSeq()} */
+        @Deprecated
+        public Seq<V> toArray(){
+            return toSeq();
+        }
+
         /** Adds the remaining values to the specified array. */
         public Seq<V> toSeq(Seq<V> array){
             while(hasNext)
@@ -723,7 +729,7 @@ public class IntMap<V> implements Iterable<IntMap.Entry<V>>{
             return hasNext;
         }
 
-        /** Boxed version of {@link #nextKey()}, for {@link Iterator} compatibility. */
+        //NOTE: incompatible with standard arc
         @Override
         public Integer next(){
             return nextKey();

@@ -68,11 +68,11 @@ public class Logger{
         Arrays.fill(formattedTopics, null);
     }
 
-    /** Ignores empty topics. */
+    /** Ignores empty topics and trim spaces. {@code null} removes all topics. */
     public void setTopics(String[] topics) {
-        if (topics == null || topics.length == 0) return;
-        this.topics = Structs.filter(topics, t -> t == null || t.isEmpty());
+        this.topics = null;
         Arrays.fill(formattedTopics, null);
+        if (topics != null) Structs.each(this::addTopic, topics);
     }
 
     public void log(LogLevel level, String text, Throwable th, Object... args){
@@ -164,9 +164,8 @@ public class Logger{
         @Override
         public String format(Logger context, LogLevel level, String[] topics){
             StringBuilder builder = new StringBuilder();
-            for (String topic : topics){
-               builder.append(tags[level.ordinal()]).append('[').append(topic).append("]&fr ");
-            }
+            String tag = tags[level.ordinal()];
+            Structs.each(topic -> builder.append(tag).append('[').append(topic).append("]&fr "), topics);
             return builder.toString();
         }
     }

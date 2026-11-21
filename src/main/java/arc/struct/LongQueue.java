@@ -342,7 +342,7 @@ public class LongQueue implements Iterable<Long>{
         for(int s = 0; s < size; s++){
             final long value = values[index];
             hash *= 31;
-            hash += Long.hashCode(value);
+            hash += (int)(value ^ (value >>> 32));
             index++;
             if(index == backingLength) index = 0;
         }

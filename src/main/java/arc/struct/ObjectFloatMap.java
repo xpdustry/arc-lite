@@ -639,7 +639,7 @@ public class ObjectFloatMap<K> implements Iterable<ObjectFloatMap.Entry<K>>{
             return hasNext;
         }
 
-        /** Boxed version of {@link #nextValue()}, for {@link Iterator} compatibility. */
+        //NOTE: incompatible with standard arc
         @Override
         public Float next(){
             return nextValue();

@@ -17,8 +17,11 @@ public class HeadlessApplication implements Application{
     protected long renderInterval;
     protected Thread mainLoopThread;
     protected boolean running = true;
+    /** @deprecated use {@link Core#graphics} */
+    @Deprecated
+    protected MockGraphics graphics;
 
-    long frameId = -1, frameStart, lastTime = System.nanoTime();
+    long frameId = -1, frameStart, lastTime = Time.nanos();
     float deltaTime = 0;
     int frames, fps;
 
@@ -40,7 +43,7 @@ public class HeadlessApplication implements Application{
         Core.app = this;
         Core.files = new MockFiles();
         Core.settings = new Settings();
-        Core.graphics = new MockGraphics(this);
+        Core.graphics = graphics = new MockGraphics(this);
         initialize();
     }
 
@@ -71,10 +74,10 @@ public class HeadlessApplication implements Application{
             }
         }
 
-        for(ApplicationListener listener : listeners){
+        listeners.each(listener -> {
             listener.pause();
             listener.dispose();
-        }
+        });
         dispose();
     }
 
@@ -92,11 +95,11 @@ public class HeadlessApplication implements Application{
     }
 
     protected void updateTime(){
-        long time = System.nanoTime();
-        deltaTime = (time - lastTime) / 1000000000.0f;
+        long time = Time.nanos();
+        deltaTime = (time - lastTime) / (float)Time.nanosPerSecond;
         lastTime = time;
 
-        if(time - frameStart >= 1000000000){
+        if(time - frameStart >= Time.nanosPerSecond){
             fps = frames;
             frames = 0;
             frameStart = time;

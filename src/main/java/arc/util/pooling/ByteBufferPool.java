@@ -22,7 +22,6 @@ package arc.util.pooling;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Function;
 
 
 public final class ByteBufferPool {
@@ -50,7 +49,6 @@ public final class ByteBufferPool {
                                   EMPTY_DIRECT = ByteBuffer.allocateDirect(0);
 
   protected final ConcurrentHashMap<Integer, Pool<ByteBuffer>> heaps, directs;
-  protected final Function<Integer, Pool<ByteBuffer>> newBucket;
   public final int factor, bucketCap;
 
   /** Creates a buffer pool with a default {@link #factor} and {@link #bucketCap} of {@code 1024}. */
@@ -63,11 +61,20 @@ public final class ByteBufferPool {
     this.directs = new ConcurrentHashMap<>(8);
     this.factor = factor;
     this.bucketCap = bucketCap;
-    this.newBucket = c -> new Pool.NullablePool<>(bucketCap);
   }
 
   protected ConcurrentHashMap<Integer, Pool<ByteBuffer>> getBuckets(boolean direct) {
     return direct ? directs : heaps;
+  }
+
+  protected Pool<ByteBuffer> getOrCreateBucket(boolean direct, int capacity) {
+    ConcurrentHashMap<Integer, Pool<ByteBuffer>> buckets = getBuckets(direct);
+    Pool<ByteBuffer> bucket = buckets.get(capacity);
+    if (bucket != null) return bucket;
+    // Another thread may have created the bucket in the meantime
+    Pool<ByteBuffer> created = new Pool.NullablePool<>(bucketCap);
+    bucket = buckets.putIfAbsent(capacity, created);
+    return bucket != null ? bucket : created;
   }
 
   protected int toFactor(int bucket) {
@@ -108,12 +115,12 @@ public final class ByteBufferPool {
   /**
    * Double release protection not handled!
    * @return whether the buffer was added to the free buffer pool.
-   *         A buffer might not be added for several reason: a {@code null} value, zero capacity,
+   *         A buffer might not be added for several reason: a {@code null} value, zero capacity, read-only,
    *         not at the defined {@link #factor}, or simply because the associated bucket is full.
    */
   public boolean release(ByteBuffer buf) {
-    if (buf == null || buf.capacity() <= 0 || buf.capacity() % factor != 0) return false;
-    return getBuckets(buf.isDirect()).computeIfAbsent(buf.capacity(), newBucket).offer(buf);
+    if (buf == null || buf.capacity() <= 0 || buf.isReadOnly() || buf.capacity() % factor != 0) return false;
+    return getOrCreateBucket(buf.isDirect(), buf.capacity()).offer(buf);
   }
 
   /** Fill a {@code bucket} completely. */
@@ -129,7 +136,7 @@ public final class ByteBufferPool {
   public void fill(int bucket, int size, boolean direct) {
     if (size <= 0 || bucket <= 0) return;
     int bucketSize = toFactor(bucket);
-    Pool<ByteBuffer> b = getBuckets(direct).computeIfAbsent(bucketSize, newBucket);
+    Pool<ByteBuffer> b = getOrCreateBucket(direct, bucketSize);
     for (int i=0; i<size; i++) {
       if (!b.offer(newBuffer(direct, bucketSize))) return;
     }

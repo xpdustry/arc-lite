@@ -2,6 +2,7 @@ package arc.graphics;
 
 import arc.math.*;
 import arc.math.geom.*;
+import arc.util.Strings;
 
 /**
  * A color class, holding the r, g, b and alpha component as floats in the range [0,1]. All methods perform clamping on the
@@ -773,9 +774,7 @@ public class Color{
     }
 
     public void toString(StringBuilder builder){
-        builder.append(Integer.toHexString(((int)(255 * r) << 24) | ((int)(255 * g) << 16) | ((int)(255 * b) << 8) | ((int)(255 * a))));
-        while(builder.length() < 8)
-            builder.insert(0, "0");
+        Strings.hex(builder, ((int)(255 * r) << 24) | ((int)(255 * g) << 16) | ((int)(255 * b) << 8) | ((int)(255 * a)), 8);
     }
 
     /**
@@ -909,9 +908,9 @@ public class Color{
         float r, g, b;
         int i;
         float f, p, q, t;
-        h = (float) Math.max(0.0, Math.min(360.0, h));
-        s = (float) Math.max(0.0, Math.min(100.0, s));
-        v = (float) Math.max(0.0, Math.min(100.0, v));
+        h = Mathf.clamp(h, 0f, 360f);
+        s = Mathf.clamp(s, 0f, 100f);
+        v = Mathf.clamp(v, 0f, 100f);
         s /= 100;
         v /= 100;
         h /= 60;
@@ -1029,7 +1028,7 @@ public class Color{
     }
 
     private static int clampf(float value){
-        return Math.min(Math.max((int)value, 0), 255);
+        return Mathf.clamp((int)value, 0, 255);
     }
 
     /** @return R value of a RGBA packed color. */

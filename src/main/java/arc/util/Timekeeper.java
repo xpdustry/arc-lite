@@ -7,6 +7,7 @@ public class Timekeeper{
 
     Timekeeper(long ms){
         intervalMs = ms;
+        zero();
     }
 
     public static Timekeeper ofMillis(long ms){
@@ -64,7 +65,8 @@ public class Timekeeper{
         lastTime = Time.nanos();
     }
 
+    /** Makes the interval passed, like it was never reset. */
     public void zero(){
-        lastTime = 0;
+        lastTime = Time.nanos() - Time.millisToNanos(intervalMs + 1);
     }
-}
+}

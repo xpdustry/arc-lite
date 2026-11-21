@@ -93,6 +93,7 @@ public class Strings{
     }
 
     public static int count(String str, String substring){
+        if(substring.isEmpty()) return 0;
         int lastIndex = 0;
         int count = 0;
 
@@ -345,31 +346,23 @@ public class Strings{
     }
 
     public static String join(String separator, String... strings){
-        StringBuilder builder = new StringBuilder();
-        for(String s : strings){
-            builder.append(s);
-            builder.append(separator);
-        }
-        builder.setLength(builder.length() - separator.length());
-        return builder.toString();
+        return join(separator, strings, 0, strings.length);
     }
 
     public static String join(String separator, Iterable<String> strings){
         StringBuilder builder = new StringBuilder();
-        for(String s : strings){
-            builder.append(s);
-            builder.append(separator);
-        }
-        builder.setLength(builder.length() - separator.length());
+        toSentence(builder, strings, StringBuilder::append, separator, separator);
         return builder.toString();
     }
 
-    public static String join(CharSequence delimiter, CharSequence[] elements, int start, int end){
-        if(elements == null || delimiter == null) return null;
+    public static String join(CharSequence separator, CharSequence[] elements, int start, int end){
         if(elements.length == 0 || start < 0 || end > elements.length || start >= end) return "";
-        StringJoiner joiner = new StringJoiner(delimiter);
-        for(int i = start; i < end; i++) joiner.add(elements[i]);
-        return joiner.toString();
+        StringBuilder builder = new StringBuilder();
+        for(int i = start; i < end; i++){
+            if(i > start) builder.append(separator);
+            builder.append(elements[i]);
+        }
+        return builder.toString();
     }
 
     /** Returns the levenshtein distance between two strings. */
@@ -398,20 +391,15 @@ public class Strings{
         if(count < 0) throw new IllegalArgumentException("count is negative: " + count);
         if(count == 1) return str;
 
-        final byte[] value = str.getBytes();
-        final int len = value.length;
+        final int len = str.length();
         if(len == 0 || count == 0) return "";
         if(Integer.MAX_VALUE / count < len)
             throw new OutOfMemoryError("Required length exceeds implementation limit");
-        if(len == 1){
-            final byte[] single = new byte[count];
-            Arrays.fill(single, value[0]);
-            return new String(single);
-        }
+        if(len == 1) return repeat(str.charAt(0), count);
 
         final int limit = len * count;
-        final byte[] multiple = new byte[limit];
-        System.arraycopy(value, 0, multiple, 0, len);
+        final char[] multiple = new char[limit];
+        str.getChars(0, len, multiple, 0);
         int copied = len;
         for(; copied < limit - copied; copied <<= 1)
             System.arraycopy(multiple, 0, multiple, copied, copied);
@@ -420,6 +408,7 @@ public class Strings{
     }
 
     public static String repeat(char c, int count){
+        if(count < 0) throw new IllegalArgumentException("count is negative: " + count);
         final char[] single = new char[count];
         Arrays.fill(single, c);
         return new String(single);
@@ -582,12 +571,15 @@ public class Strings{
     public static int parseInt(String s){
         return parseInt(s, Integer.MIN_VALUE);
     }
+
     public static int parseInt(String s, int defaultValue){
         return parseInt(s, 10, defaultValue);
     }
+
     public static int parseInt(String s, int radix, int defaultValue){
         return parseInt(s, radix, defaultValue, 0, s.length());
     }
+
     public static int parseInt(String s, int radix, int defaultValue, int start, int end){
         boolean negative = false;
         int i = start, len = end - start, limit = -2147483647;
@@ -651,9 +643,11 @@ public class Strings{
     public static long parseLong(String s){
         return parseLong(s, 10, Long.MIN_VALUE);
     }
+
     public static long parseLong(String s, long defaultValue){
         return parseLong(s, 10, defaultValue);
     }
+
     public static long parseLong(String s, int radix, long defaultValue){
         return parseLong(s, radix, 0, s.length(), defaultValue);
     }
@@ -697,12 +691,15 @@ public class Strings{
             return negative ? result : -result;
         }
     }
+
     public static double parseDouble(String value){
-        return parseDouble(value, Double.MIN_VALUE);
+        return parseDouble(value, Double.NEGATIVE_INFINITY);
     }
+
     public static double parseDouble(String value, double defaultValue){
         return parseDouble(value, 0, value.length(), defaultValue);
     }
+
     /** Faster double parser that doesn't throw exceptions. */
     public static double parseDouble(String value, int start, int end, double defaultValue){
         int len = end - start;
@@ -797,7 +794,6 @@ public class Strings{
     public static float parseFloat(String s){
         return parseFloat(s, Float.NEGATIVE_INFINITY);
     }
-
 
     public static float parseFloat(String value, float defaultValue){
         return (float)parseDouble(value, defaultValue);
@@ -1017,7 +1013,7 @@ public class Strings{
     /** Re-implementation of {@link Color#fromHsv(float, float, float)} that handles only the hue. */
     public static void hueToColorTag(StringBuilder builder, int hue){
         int r, g, b;
-        float x = (hue / 60f + 6) % 6;
+        float x = Mathf.mod(hue, 360) / 60f;
         float f = x - (int)x;
         float q = 1 - f;
         switch((int)x){
@@ -1039,7 +1035,6 @@ public class Strings{
             case 3:
                 r = 0;
                 g = (int)(q * 255);
-                ;
                 b = 255;
                 break;
             case 4:
@@ -1053,14 +1048,21 @@ public class Strings{
                 b = (int)(q * 255);
         }
         builder.append("[#");
-        if(r < 16) builder.append('0');
-        builder.append(Integer.toHexString(r));
-        if(g > 0 || b > 0){
-            if(g < 16) builder.append('0');
-            builder.append(Integer.toHexString(g));
-            if(b > 0){ if(b < 16) builder.append('0'); builder.append(Integer.toHexString(b)); }
-        }
+        hex(builder, r, 2);
+        if(g > 0 || b > 0) hex(builder, g, 2);
+        if(b > 0) hex(builder, b, 2);
         builder.append(']');
+    }
+
+    public static String hex(int value, int digits){
+        return hex(new StringBuilder(Math.max(digits, 8)), value, digits).toString();
+    }
+
+    /** @return the value in hexadecimal, padded with zeros up to the specified number of digits. */
+    public static StringBuilder hex(StringBuilder builder, int value, int digits){
+        String hex = Integer.toHexString(value);
+        for(int i = hex.length(); i < digits; i++) builder.append('0');
+        return builder.append(hex);
     }
 
     public static String rainbowify(String src, int startHue, int addedHue){
@@ -1082,27 +1084,17 @@ public class Strings{
     /** @return whether the specified string mean true */
     public static boolean isTrue(String str, boolean isValue){
         if(str == null) return false;
-        if(isValue){
-            switch(str.toLowerCase(Locale.ROOT)){
-                case "1":
-                case "true":
-                case "on":
-                case "enable":
-                case "activate":
-                case "yes":
-                    return true;
-                default:
-                    return false;
-            }
-        }else{
-            switch(str.toLowerCase(Locale.ROOT)){
-                case "on":
-                case "enable":
-                case "activate":
-                    return true;
-                default:
-                    return false;
-            }
+        switch(str.toLowerCase(Locale.ROOT)){
+            case "1":
+            case "true":
+            case "yes":
+                return isValue;
+            case "on":
+            case "enable":
+            case "activate":
+                return true;
+            default:
+                return false;
         }
     }
 
@@ -1112,27 +1104,17 @@ public class Strings{
     /** @return whether the specified string mean false */
     public static boolean isFalse(String str, boolean isValue){
         if(str == null) return false;
-        if(isValue){
-            switch(str.toLowerCase(Locale.ROOT)){
-                case "0":
-                case "false":
-                case "off":
-                case "disable":
-                case "desactivate":
-                case "no":
-                    return true;
-                default:
-                    return false;
-            }
-        }else{
-            switch(str.toLowerCase(Locale.ROOT)){
-                case "off":
-                case "disable":
-                case "desactivate":
-                    return true;
-                default:
-                    return false;
-            }
+        switch(str.toLowerCase(Locale.ROOT)){
+            case "0":
+            case "false":
+            case "no":
+                return isValue;
+            case "off":
+            case "disable":
+            case "desactivate":
+                return true;
+            default:
+                return false;
         }
     }
 
@@ -1196,14 +1178,14 @@ public class Strings{
     }
 
     private static final Object[][] TIME_PERIODS = {
-        {"year", "years", "y", 1000L * 60 * 60 * 24 * 365},
-        {"month", "months", "mo", 1000L * 60 * 60 * 24 * 30},
-        // {"week", "weeks", "w", 1000L*60*60*24*7},
-        {"day", "days", "d", 1000L * 60 * 60 * 24},
-        {"hour", "hours", "h", 1000L * 60 * 60},
-        {"minute", "minutes", "m", 1000L * 60},
-        {"second", "seconds", "s", 1000L},
-        // {"millisecond", "millisecond", "ms", 1L},
+        {"year",        "years",       "y",  1000L * 60 * 60 * 24 * 365},
+        {"month",       "months",      "mo", 1000L * 60 * 60 * 24 * 30},
+        //{"week",        "weeks",       "w",  1000L*60*60*24*7},
+        {"day",         "days",        "d",  1000L * 60 * 60 * 24},
+        {"hour",        "hours",       "h",  1000L * 60 * 60},
+        {"minute",      "minutes",     "m",  1000L * 60},
+        {"second",      "seconds",     "s",  1000L},
+        //{"millisecond", "millisecond", "ms", 1L},
     };
 
     /**
@@ -1214,23 +1196,25 @@ public class Strings{
      * @param narrow use short units or not. E.g. "5 months" if {@code false}, "5mo" if {@code true}
      */
     public static String formatDuration(long millis, boolean narrow){
-        boolean negative = millis < 0;
-        millis = Math.abs(millis);
-        StringBuilder builder = new StringBuilder();
-        boolean space = false;
-
+        // Long.MIN_VALUE has no positive value
+        long remaining = millis == Long.MIN_VALUE ? Long.MAX_VALUE : Math.abs(millis);
+        Seq<String> parts = new Seq<>(true, TIME_PERIODS.length, String.class);
         for(Object[] element : TIME_PERIODS){
-            long period = (long)element[3];
-            if(millis >= period){
-                long count = millis / period;
-                millis %= period;
-                if(space) builder.append(' ');
-                if(negative) builder.append('-');
-                builder.append(count).append(element[narrow ? 2 : count > 1 ? 1 : 0]);
-                space = true;
-            }
+            long period = (long)element[3], count = remaining / period;
+            if(count == 0) continue;
+            remaining %= period;
+            parts.add(narrow ? count + (String)element[2] : count + " " + element[count > 1 ? 1 : 0]);
         }
 
+        // Less than the smallest period
+        if(parts.isEmpty()){
+            Object[] smallest = TIME_PERIODS[TIME_PERIODS.length - 1];
+            parts.add(narrow ? "0" + smallest[2] : "0 " + smallest[1]);
+        }
+
+        StringBuilder builder = new StringBuilder();
+        if(millis < 0) builder.append('-');
+        toSentence(builder, parts, StringBuilder::append, narrow ? " " : ", ", narrow ? " " : " and ");
         return builder.toString();
     }
 

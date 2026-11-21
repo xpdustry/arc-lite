@@ -478,12 +478,7 @@ public class I18NBundle{
      * The I18NBundle won't be able to reset values after calling debug and should only be using during testing.
      */
     public void debug(String placeholder){
-        ObjectMap.Keys<String> keys = properties.keys();
-        if(keys == null) return;
-
-        for(String s : keys){
-            properties.put(s, placeholder);
-        }
+        Structs.each(properties.keys(), key -> properties.put(key, placeholder));
     }
 
     /** @return the parent bundle. */

@@ -22,6 +22,7 @@ public class TaskQueue{
     protected int index;
     protected final AtomicInteger size = new AtomicInteger();
     protected final AtomicBoolean draining = new AtomicBoolean();
+    protected volatile Thread drainer;
 
     public TaskQueue(){
         Chunk first = new Chunk();
@@ -30,6 +31,7 @@ public class TaskQueue{
     }
 
     public void post(Runnable task){
+        if(task == null) throw new IllegalArgumentException("task cannot be null.");
         for(;;){
             Chunk chunk = producer.get();
             int offset = chunk.claim.getAndIncrement();
@@ -68,6 +70,7 @@ public class TaskQueue{
 
     public void run(){
         if(!draining.compareAndSet(false, true)) return;
+        drainer = Thread.currentThread();
         try{
             for(int n = size.get(); n > 0; n--){
                 Runnable task = poll();
@@ -76,6 +79,7 @@ public class TaskQueue{
                 task.run();
             }
         }finally{
+            drainer = null;
             draining.set(false);
         }
     }
@@ -84,12 +88,22 @@ public class TaskQueue{
         return size.get();
     }
 
+    /** Removes all the tasks. Does nothing if the tasks are being run by another thread. */
     public void clear(){
+        // Fast path
+        if(drainer == Thread.currentThread()){
+            removeAll();
+            return;
+        }
         if(!draining.compareAndSet(false, true)) return;
         try{
-            while(poll() != null) size.decrementAndGet();
+            removeAll();
         }finally{
             draining.set(false);
         }
+    }
+
+    protected void removeAll(){
+        while(poll() != null) size.decrementAndGet();
     }
 }

@@ -203,6 +203,12 @@ public class LongSeq implements Iterable<Long>{
         return -1;
     }
 
+    /** @deprecated use {@link #lastIndexOf(long)} */
+    @Deprecated
+    public int lastIndexOf(char value){
+        return lastIndexOf((long)value);
+    }
+
     public boolean removeValue(long value){
         long[] items = this.items;
         for(int i = 0, n = size; i < n; i++){

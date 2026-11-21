@@ -579,9 +579,7 @@ public class Fi implements Comparable<Fi>{
      * Directories are not handled.*/
     public void walk(Cons<Fi> cons){
         if(isDirectory()){
-            for(Fi file : list()){
-                file.walk(cons);
-            }
+            Structs.each(file -> file.walk(cons), list());
         }else{
             cons.get(this);
         }

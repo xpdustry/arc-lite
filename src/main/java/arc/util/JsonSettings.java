@@ -74,11 +74,7 @@ public class JsonSettings implements Autosaver.Saveable {
    */
   public JsonSettings(Fi file, Fi backupFile, boolean plainJson, boolean autosave, boolean backuped, boolean compressed) {
     this.file = file;
-    if (backupFile == null) {
-      String extension = file.extension();
-      this.backupFile = file.parent().child(file.nameWithoutExtension() + "_backup" +
-                                            (extension.isEmpty() ? "" : '.' + extension));
-    } else this.backupFile = backupFile;
+    this.backupFile = backupFile != null ? backupFile : withSuffix(file, "_backup");
     this.plainJson = plainJson;
     this.reader = plainJson ? new JsonReader() : new UBJsonReader();
     this.backuped = backuped;
@@ -169,21 +165,27 @@ public class JsonSettings implements Autosaver.Saveable {
         if (exists()) moveCorrupted(file());
         backupFile().copyTo(file());
         Log.info("Loaded backup settings file successfully!");
-      } catch (Throwable e) {
-        Log.err("Failed to load backup settings file", e);
-        if (errorHandler != null) errorHandler.get(e);
-        else throw e;
+      } catch (RuntimeException e) {
+        loadFailed("Failed to load backup settings file", e);
       }
       modified = false;
 
-    } else if (error != null) {
-      Log.err("Failed to load settings file", error);
-      if (errorHandler != null) errorHandler.get(error);
-      else throw error;
-    }
+    } else if (error != null) loadFailed("Failed to load settings file", error);
 
     // if loading failed, it still counts
     loaded = true;
+  }
+
+  private void loadFailed(String message, RuntimeException error) {
+    // The next save would overwrite the corrupted file, so keep it for the user
+    if (errorHandler != null && exists()) moveCorrupted(file());
+    handleError(message, error);
+  }
+
+  protected void handleError(String message, RuntimeException error) {
+    Log.err(message, error);
+    if (errorHandler == null) throw error;
+    errorHandler.get(error);
   }
 
   /** Saves all values. */
@@ -193,14 +195,12 @@ public class JsonSettings implements Autosaver.Saveable {
   }
 
   @Override
-  public void forceSave() {
+  public synchronized void forceSave() {
     if (!loaded) return;
     try {
       saveValues(file());
-    } catch (Throwable e) {
-      Log.err("Error writing settings", e);
-      if (errorHandler != null) errorHandler.get(e);
-      else throw e;
+    } catch (RuntimeException e) {
+      handleError("Error writing settings", e);
     }
     modified = false;
   }
@@ -233,45 +233,49 @@ public class JsonSettings implements Autosaver.Saveable {
     } catch (Throwable e) { throw new RuntimeException("Error reading file: " + file, e); }
   }
 
-  @SuppressWarnings("resource")
   public synchronized void saveValues(Fi file) {
+    // Written to a temporary file first, so a failure can't corrupt or remove the existing one
+    Fi temp = file.sibling(file.name() + ".tmp");
     try {
-      if (plainJson) {
-        try (Writer writer = new BufferedWriter(file.writer(false), 8192)) {
-          builder.reset();
+      if (plainJson) writeJson(temp);
+      else writeUBJson(temp);
+      temp.moveTo(file);
+    } catch (Throwable e) {
+      if (temp.exists()) temp.delete();
+      throw new RuntimeException("Error writing file: " + file, e);
+    }
+  }
 
-          builder.object();
-          for (OrderedMap.Entry<String, JsonValue> e : values)
-            builder.set(e.key, e.value != null ? e.value : simple.get(e.key));
-          builder.close();
+  protected void writeJson(Fi file) throws Exception {
+    try (Writer writer = new BufferedWriter(file.writer(false), 8192)) {
+      builder.reset();
+      builder.object();
+      values.each((key, value) -> builder.set(key, value != null ? value : simple.get(key)));
+      builder.close();
 
-          if (compressed) builder.getJson().toJson(writer, JsonWriter.OutputType.json);
-          else builder.getJson().prettyPrint(JsonWriter.OutputType.json, writer);
-          builder.reset();
-        }
+      if (compressed) builder.getJson().toJson(writer, JsonWriter.OutputType.json);
+      else builder.getJson().prettyPrint(JsonWriter.OutputType.json, writer);
+    } finally {
+      builder.reset();
+    }
+  }
 
-      } else {
-        try (OutputStream write = file.write(false, 8192);
-             OutputStream out = compressed ? new FastDeflaterOutputStream(write) : write) {
-          // place here, like that json doesn't become valid when an error occur
-          UBJsonWriter writer = new UBJsonWriter(out);
-
-          writer.object();
-          for (OrderedMap.Entry<String, JsonValue> e : values) {
-            // This is needed because #value() with a JsonValue is another method.
-            if (e.value == null) writer.set(e.key, simple.get(e.key));
-            else {
-              e.value.name = null; //in case of
-              writer.name(e.key).value(e.value);
-            }
-          }
-          writer.close();
+  @SuppressWarnings("resource")
+  protected void writeUBJson(Fi file) throws Exception {
+    try (OutputStream write = file.write(false, 8192);
+         OutputStream out = compressed ? new FastDeflaterOutputStream(write) : write) {
+      // place here, so json doesn't become valid at error
+      UBJsonWriter writer = new UBJsonWriter(out);
+      writer.object();
+      for (OrderedMap.Entry<String, JsonValue> e : values) {
+        // This is needed because #value() with a JsonValue is another method.
+        if (e.value == null) writer.set(e.key, simple.get(e.key));
+        else {
+          e.value.name = null; //in case of
+          writer.name(e.key).value(e.value);
         }
       }
-
-    } catch (Throwable e) {
-      moveCorrupted(file);
-      throw new RuntimeException("Error writing file: " + file, e);
+      writer.close();
     }
   }
 
@@ -280,10 +284,12 @@ public class JsonSettings implements Autosaver.Saveable {
    * and we can load a backup, if possible, next time.
    */
   protected void moveCorrupted(Fi file) {
+    file.moveTo(withSuffix(file, "_corrupted-" + Time.millis()));
+  }
+
+  protected Fi withSuffix(Fi file, String suffix) {
     String extension = file.extension();
-    String newName = file.nameWithoutExtension() + "_corrupted-" + System.currentTimeMillis();
-    if (!extension.isEmpty()) newName += "." + extension;
-    file.moveTo(file.parent().child(newName));
+    return file.parent().child(file.nameWithoutExtension() + suffix + (extension.isEmpty() ? "" : "." + extension));
   }
 
   /** @return whether the file exists or not. */
@@ -326,10 +332,6 @@ public class JsonSettings implements Autosaver.Saveable {
     return values.size;
   }
 
-  protected boolean isKnownType(Class<?> known) {
-    return known == String.class || known.isPrimitive() || Reflect.isWrapper(known);
-  }
-
   public synchronized boolean has(String name) {
     return values.containsKey(name);
   }
@@ -368,10 +370,9 @@ public class JsonSettings implements Autosaver.Saveable {
     put(name, elementType, null, value);
   }
 
-  /** @apiNote {@code keyType} is not supported and ignored. object keys are converted using {@link String#valueOf(Object)} */
   public synchronized <K, E> void put(String name, Class<E> elementType, Class<K> keyType, Object value) {
     // Store primitive, null and JsonValue values directly instead of converting it to JsonValue
-    if (value == null || isKnownType(value.getClass())) {
+    if (value == null || Reflect.isValueType(value.getClass())) {
       simple.put(name, value);
       values.put(name, null); // reserve the key
       modified = true;
@@ -386,7 +387,7 @@ public class JsonSettings implements Autosaver.Saveable {
     builder.reset();
     json.setWriter(builder);
 
-    try { json.writeValue(value, value.getClass(), elementType); }
+    try { json.writeValue(value, value.getClass(), elementType, keyType); }
     catch (Throwable e) { throw new RuntimeException(e); }
 
     values.put(name, builder.getJson());
@@ -434,6 +435,8 @@ public class JsonSettings implements Autosaver.Saveable {
       if (o == null || type == null || type.isInstance(o)) return (T)o;
       if (value == null) value = JsonWriterBuilder.toJsonValue(o);
     }
+    // Not found, and must not be cached
+    if (value == null) return null;
     if (type == JsonValue.class) return (T)value;
 
     T result;
@@ -441,7 +444,8 @@ public class JsonSettings implements Autosaver.Saveable {
     catch (Throwable e) { throw new RuntimeException(e); }
 
     // Store primitive, null and JsonValue values directly when possible
-    if (!contains && (result == null || isKnownType(result.getClass()) && (type == null || isKnownType(type))))
+    if (!contains && (result == null || Reflect.isValueType(result.getClass()) &&
+        (type == null || Reflect.isValueType(type))))
       simple.put(name, result);
 
     return result;
@@ -489,6 +493,7 @@ public class JsonSettings implements Autosaver.Saveable {
     return value == null ? def : value;
   }
 
+  //NOTE: incompatible with standard arc
   public long getLong(String name, long def) {
     Long value = getOrPut(name, Long.class, def);
     return value == null ? def : value;
@@ -504,23 +509,24 @@ public class JsonSettings implements Autosaver.Saveable {
   }
 
   public float getFloat(String name) {
-    Float value = has(name) ? get(name, Float.class) : null;
-    return value != null ? value : ((Number)defaults.get(name, 0)).floatValue();
+    return getNumber(name, Float.class).floatValue();
   }
 
   public double getDouble(String name) {
-    Double value = has(name) ? get(name, Double.class) : null;
-    return value != null ? value : ((Number)defaults.get(name, 0)).doubleValue();
+    return getNumber(name, Double.class).doubleValue();
   }
 
   public int getInt(String name) {
-    Integer value = has(name) ? get(name, Integer.class) : null;
-    return value != null ? value : ((Number)defaults.get(name, 0)).intValue();
+    return getNumber(name, Integer.class).intValue();
   }
 
   public long getLong(String name) {
-    Long value = has(name) ? get(name, Long.class) : null;
-    return value != null ? value : ((Number)defaults.get(name, 0)).longValue();
+    return getNumber(name, Long.class).longValue();
+  }
+
+  protected Number getNumber(String name, Class<? extends Number> type) {
+    Number value = has(name) ? get(name, type) : null;
+    return value != null ? value : (Number)defaults.get(name, 0);
   }
 
   public boolean getBool(String name) {
@@ -543,10 +549,8 @@ public class JsonSettings implements Autosaver.Saveable {
     return !val;
   }
 
-  /**
-   * Toggles a boolean value.
-   * @return the previous value.
-   */
+  //NOTE: incompatible with standard arc
+  /** Toggles a boolean value. */
   public synchronized boolean toggle(String name) {
     boolean val = getBool(name);
     put(name, !val);

@@ -1,5 +1,6 @@
 package arc;
 
+import arc.graphics.*;
 import arc.util.*;
 
 /**
@@ -18,41 +19,44 @@ import arc.util.*;
  * loss. Explore the arc.graphics package for more classes that might come in handy.
  * @author mzechner
  *
- * @deprecated Just here for compatibility reasons, only contains methods about frame rate.
- *             Please use same methods from {@link Application} instead.
+ * @deprecated Just here for compatibility reasons.
  */
 @Deprecated
 public abstract class Graphics implements Disposable{
-    /**
-     * Returns the id of the current frame. The general contract of this method is that the id is incremented only when the
-     * application is in the running state right before calling the {@link ApplicationListener#update()} method. Also, the id of
-     * the first frame is 0; the id of subsequent frames is guaranteed to take increasing values for 2<sup>63</sup>-1 rendering
-     * cycles.
-     * @return the id of the current frame
-     *
-     * @deprecated Use {@link Application#getFrameId()} instead.
-     */
-    @Deprecated
-    public abstract long getFrameId();
-
-    /**
-     * @return the time span between the current frame and the last frame in seconds. Might be smoothed over n frames.
-     *
-     * @deprecated Use {@link Application#getDeltaTime()} instead.
-     */
-    @Deprecated
-    public abstract float getDeltaTime();
-
-    /**
-     * @return the average number of frames per second
-     *
-     * @deprecated Use {@link Application#getFramesPerSecond()} instead.
-     */
-    @Deprecated
-    public abstract int getFramesPerSecond();
-
-    @Deprecated
-    @Override
-    public void dispose(){
-    }
+    /** @deprecated Use {@link Application#getFrameId()} instead. */
+    @Deprecated public abstract long getFrameId();
+    /** @deprecated Use {@link Application#getDeltaTime()} instead. */
+    @Deprecated public abstract float getDeltaTime();
+    /** @deprecated Use {@link Application#getFramesPerSecond()} instead. */
+    @Deprecated public abstract int getFramesPerSecond();
+    @Deprecated public int getWidth(){ return 0; }
+    @Deprecated public int getHeight(){ return 0; }
+    @Deprecated public int getBackBufferWidth(){ return 0; }
+    @Deprecated public int getBackBufferHeight(){ return 0; }
+    @Deprecated public int[] getSafeInsets(){ return new int[4]; }
+    @Deprecated public float getAspect(){ return 0; }
+    @Deprecated public boolean isPortrait(){ return false; }
+    @Deprecated public float getPpiX(){ return 0; }
+    @Deprecated public float getPpiY(){ return 0; }
+    @Deprecated public float getPpcX(){ return 0; }
+    @Deprecated public float getPpcY(){ return 0; }
+    @Deprecated public float getDensity(){ return 0; }
+    @Deprecated public boolean isHidden(){ return false; }
+    @Deprecated public boolean isFullscreen(){ return false; }
+    @Deprecated public boolean setFullscreen(boolean fullscreen){ return false; }
+    @Deprecated public boolean isGL30Available(){ return false; }
+    @Deprecated public boolean supportsExtension(String extension){ return false; }
+    @Deprecated public boolean supportsInstancing(){ return false; }
+    @Deprecated public boolean isContinuousRendering(){ return false; }
+    @Deprecated public void setContinuousRendering(boolean continuous){}
+    @Deprecated public void requestRendering(){}
+    @Deprecated public void setTitle(String title){}
+    @Deprecated public void setVSync(boolean vsync){}
+    @Deprecated public void setPreferredFPS(int fps){}
+    @Deprecated public void setWindowPosition(int x, int y){}
+    @Deprecated public void setWindowSize(int width, int height){}
+    @Deprecated public void restoreCursor(){}
+    @Deprecated public void clear(float r, float g, float b, float a){}
+    @Deprecated public void clear(Color color){}
+    @Deprecated @Override public void dispose(){}
 }

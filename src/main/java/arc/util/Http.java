@@ -292,7 +292,7 @@ public class Http{
                 connection.setDoOutput(doingOutPut);
                 connection.setDoInput(true);
                 connection.setRequestMethod(method.toString());
-                HttpURLConnection.setFollowRedirects(followRedirects);
+                connection.setInstanceFollowRedirects(followRedirects);
 
                 //set headers
                 headers.each(connection::addRequestProperty);

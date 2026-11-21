@@ -6,6 +6,7 @@ import arc.math.*;
 import arc.net.FrameworkMessage.*;
 import arc.struct.*;
 import arc.util.*;
+import arc.util.io.Streams;
 import arc.util.pooling.ByteBufferPool;
 
 import java.io.*;
@@ -226,11 +227,7 @@ public class Server implements EndPoint{
             if(emptySelects++ == 0) emptySelectsStart = now;
             else if(emptySelects >= 100){
                 emptySelects = 0;
-                if(timeout > 0 && now - emptySelectsStart < 2_000_000L){
-                    try{
-                        Thread.sleep(1);
-                    }catch(InterruptedException ignored){}
-                }
+                if(timeout > 0 && now - emptySelectsStart < 2_000_000L) Threads.sleepQuietly(1);
             }
         }else emptySelects = 0;
         Set<SelectionKey> keys = selector.selectedKeys();
@@ -371,10 +368,7 @@ public class Server implements EndPoint{
 
     public void keepAlive(){
         long time = Time.millis();
-        Connection[] connections = this.connections;
-        for(Connection connection : connections){
-            if(connection.tcp.needsKeepAlive(time)) connection.sendTCP(FrameworkMessage.keepAlive);
-        }
+        Structs.each(c -> c.tcp.needsKeepAlive(time), c -> c.sendTCP(FrameworkMessage.keepAlive), connections);
     }
 
     @Override
@@ -413,9 +407,7 @@ public class Server implements EndPoint{
             return;
         }else if(alive){
             selector.wakeup();
-            try{
-                thread.join(5000);
-            }catch(InterruptedException ignored){}
+            Threads.joinQuietly(thread, 5000);
         }
 
         starting = true;
@@ -451,9 +443,7 @@ public class Server implements EndPoint{
                 accepted = false;
             }
             if(!accepted || serverChannel == null){
-                try{
-                    socketChannel.close();
-                }catch(IOException ignored){}
+                Streams.close(socketChannel);
                 return;
             }
         }
@@ -589,10 +579,7 @@ public class Server implements EndPoint{
     }
 
     public void eachConnections(Boolf<Connection> predicate, Cons<Connection> consumer){
-        Connection[] connections = this.connections;
-        for(Connection c : connections){
-            if (predicate.get(c)) consumer.get(c);
-        }
+        Structs.each(predicate, consumer, connections);
     }
 
     public void sendToAllTCP(Object object){
@@ -601,32 +588,12 @@ public class Server implements EndPoint{
 
     /** Sends the object over TCP to every connection except the specified one, serializing it only once. */
     public void sendToAllExceptTCP(int connectionID, Object object){
-        Connection[] connections = this.connections;
-        if(connections.length == 0) return;
-        ByteBuffer buffer = serialize(object, true);
-        if(buffer == null) return;
-
-        try{
-            for(Connection con : connections){
-                if(con.getID() != connectionID && con.isConnected()) con.sendTCPBuffer(buffer);
-            }
-        }finally{
-            ByteBufferPool.free(buffer);
-        }
+        sendToAll(connections, connectionID, object, true);
     }
 
     /** Sends the object over TCP to every connection in the list, serializing it only once. */
     public void sendToAllTCP(Object object, Iterable<Connection> connections){
-        ByteBuffer buffer = serialize(object, true);
-        if(buffer == null) return;
-
-        try{
-            for(Connection con : connections){
-                if(con.isConnected()) con.sendTCPBuffer(buffer);
-            }
-        }finally{
-            ByteBufferPool.free(buffer);
-        }
+        sendToAll(connections, 0, object, true);
     }
 
     public void sendToTCP(int connectionID, Object object){
@@ -647,18 +614,7 @@ public class Server implements EndPoint{
      * TCP only connections are ignored.
      */
     public void sendToAllExceptUDP(int connectionID, Object object){
-        Connection[] connections = this.connections;
-        if(udp == null || connections.length == 0) return;
-        ByteBuffer buffer = serialize(object, false);
-        if(buffer == null) return;
-
-        try{
-            for(Connection con : connections){
-                if(con.getID() != connectionID && !con.tcpOnly && con.isConnected()) con.sendUDPBuffer(buffer);
-            }
-        }finally{
-            ByteBufferPool.free(buffer);
-        }
+        sendToAll(connections, connectionID, object, false);
     }
 
     /**
@@ -666,17 +622,43 @@ public class Server implements EndPoint{
      * The TCP only connections are ignored.
      */
     public void sendToAllUDP(Object object, Iterable<Connection> connections){
-        if(udp == null) return;
-        ByteBuffer buffer = serialize(object, false);
+        sendToAll(connections, 0, object, false);
+    }
+
+    /** Sends the object to every connection except the specified one ({@code 0} for none), serializing it only once. */
+    public void sendToAll(Connection[] connections, int exceptID, Object object, boolean reliable){
+        if(connections.length == 0 || !reliable && udp == null) return;
+        ByteBuffer buffer = serialize(object, reliable);
         if(buffer == null) return;
 
         try{
             for(Connection con : connections){
-                if(!con.tcpOnly && con.isConnected()) con.sendUDPBuffer(buffer);
+                if(con.getID() != exceptID) sendBuffer(con, buffer, reliable);
             }
         }finally{
             ByteBufferPool.free(buffer);
         }
+    }
+
+    /** Sends the object to every connection in the list, serializing it only once. */
+    public void sendToAll(Iterable<Connection> connections, int exceptID, Object object, boolean reliable){
+        if(!reliable && udp == null) return;
+        ByteBuffer buffer = serialize(object, reliable);
+        if(buffer == null) return;
+
+        try{
+            for(Connection con : connections){
+                if(con.getID() != exceptID) sendBuffer(con, buffer, reliable);
+            }
+        }finally{
+            ByteBufferPool.free(buffer);
+        }
+    }
+
+    private static void sendBuffer(Connection connection, ByteBuffer buffer, boolean tcp){
+        if(!connection.isConnected()) return;
+        if(tcp) connection.sendTCPBuffer(buffer);
+        else if(!connection.tcpOnly) connection.sendUDPBuffer(buffer);
     }
 
     public void sendToUDP(int connectionID, Object object){
@@ -724,13 +706,8 @@ public class Server implements EndPoint{
             pendingConnections.values().toSeq().each(Server::disposeQuietly);
             clearConnections();
 
-            ServerSocketChannel serverChannel = this.serverChannel;
-            if(serverChannel != null){
-                try{
-                    serverChannel.close();
-                }catch(IOException ignored){}
-                this.serverChannel = null;
-            }
+            Streams.close(serverChannel);
+            serverChannel = null;
 
             if(discoveryReceiver != null){
                 discoveryReceiver.close();
@@ -775,9 +752,7 @@ public class Server implements EndPoint{
         }finally{
             shutdown = true;
             synchronized(updateLock){
-                try{
-                    selector.close();
-                }catch(IOException ignored){}
+                Streams.close(selector);
             }
         }
     }
@@ -798,9 +773,11 @@ public class Server implements EndPoint{
     @SuppressWarnings("deprecation")
     public class DiscoveryReceiver{
         volatile MulticastSocket socket = null;
+        volatile boolean closed;
         Thread multicastThread;
 
         public void close(){
+            closed = true;
             if(multicastThread != null) multicastThread.interrupt();
             MulticastSocket socket = this.socket;
             if(socket != null) socket.close();
@@ -810,30 +787,37 @@ public class Server implements EndPoint{
             multicastThread = Threads.daemon("Server Multicast Discovery", () -> {
                 try(MulticastSocket socket = new MulticastSocket(multicastPort)){
                     this.socket = socket;
-                    if(Thread.currentThread().isInterrupted()) return; // Closed in the meantime
+                    if(closed) return; // Closed in the meantime
                     socket.joinGroup(multicastGroup);
                     DatagramPacket packet = new DatagramPacket(new byte[512], 512);
                     while(true){
                         socket.receive(packet);
-                        discoveryHandler.onDiscoverReceived(packet.getAddress(), buffer -> {
-                            DatagramPacket out;
-                            if(buffer.hasArray()){
-                                out = new DatagramPacket(buffer.array(), buffer.arrayOffset() + buffer.position(), buffer.remaining());
-                            }else{
-                                byte[] data = new byte[buffer.remaining()];
-                                buffer.duplicate().get(data);
-                                out = new DatagramPacket(data, data.length);
-                            }
-                            out.setSocketAddress(packet.getSocketAddress());
-                            socket.send(out);
-                        });
+                        reply(socket, packet);
                     }
                 }catch(IOException e){
-                    if(!(e instanceof SocketException && "Socket closed".equals(e.getMessage()))){
-                        ArcNet.handleError(e);
-                    }
+                    if(!closed) ArcNet.handleError(e);
                 }
             });
+        }
+
+        /** A failing handler must not stop the discovery. */
+        private void reply(MulticastSocket socket, DatagramPacket packet){
+            try{
+                discoveryHandler.onDiscoverReceived(packet.getAddress(), buffer -> {
+                    DatagramPacket out;
+                    if(buffer.hasArray()){
+                        out = new DatagramPacket(buffer.array(), buffer.arrayOffset() + buffer.position(), buffer.remaining());
+                    }else{
+                        byte[] data = new byte[buffer.remaining()];
+                        buffer.duplicate().get(data);
+                        out = new DatagramPacket(data, data.length);
+                    }
+                    out.setSocketAddress(packet.getSocketAddress());
+                    socket.send(out);
+                });
+            }catch(Exception e){
+                if(!closed) ArcNet.handleError(e);
+            }
         }
     }
 

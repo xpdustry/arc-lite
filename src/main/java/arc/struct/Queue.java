@@ -487,7 +487,7 @@ public class Queue<T> implements Iterable<T>, Eachable<T>{
             T myValue = myValues[myIndex];
             Object itsValue = itsValues[itsIndex];
 
-            if(!(myValue == null ? itsValue == null : myValue.equals(itsValue))) return false;
+            if(!Structs.eq(myValue, itsValue)) return false;
             myIndex++;
             itsIndex++;
             if(myIndex == myBackingLength) myIndex = 0;

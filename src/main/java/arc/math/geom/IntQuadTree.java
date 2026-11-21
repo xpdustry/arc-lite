@@ -5,6 +5,8 @@ import arc.struct.*;
 
 public class IntQuadTree{
     protected final Rect tmp = new Rect();
+    //if many objects are stacked on a point, it may split infinitely, so floor the size
+    protected static final float minNodeSize = 10f;
     protected static final int maxObjectsPerNode = 5;
 
     public IntQuadTreeProvider prov;
@@ -20,7 +22,7 @@ public class IntQuadTree{
     }
 
     protected void split(){
-        if(!leaf) return;
+        if(!leaf || bounds.width <= minNodeSize || bounds.height <= minNodeSize) return;
 
         float subW = bounds.width / 2;
         float subH = bounds.height / 2;
@@ -228,22 +230,7 @@ public class IntQuadTree{
      * Fills the out parameter with any objects that may intersect the given rectangle.
      */
     public void intersect(float x, float y, float width, float height, IntSeq out){
-        if(!leaf){
-            if(topLeft.bounds.overlaps(x, y, width, height)) topLeft.intersect(x, y, width, height, out);
-            if(topRight.bounds.overlaps(x, y, width, height)) topRight.intersect(x, y, width, height, out);
-            if(botLeft.bounds.overlaps(x, y, width, height)) botLeft.intersect(x, y, width, height, out);
-            if(botRight.bounds.overlaps(x, y, width, height)) botRight.intersect(x, y, width, height, out);
-        }
-
-        IntSeq objects = this.objects;
-
-        for(int i = 0; i < objects.size; i++){
-            int item = objects.items[i];
-            hitbox(item);
-            if(tmp.overlaps(x, y, width, height)){
-                out.add(item);
-            }
-        }
+        intersect(x, y, width, height, (Intc)out::add);
     }
 
     /** Adds all quadtree objects to the specified Seq. */

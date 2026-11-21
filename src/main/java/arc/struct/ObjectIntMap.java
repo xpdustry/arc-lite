@@ -619,6 +619,12 @@ public class ObjectIntMap<K> implements Iterable<ObjectIntMap.Entry<K>>{
             }
             return out;
         }
+
+        /** @deprecated use {@link #toSeq()} */
+        @Deprecated
+        public Seq<Entry<K>> toArray(){
+            return toSeq();
+        }
     }
 
     static public class Values extends MapIterator<Object> implements Iterable<Integer>, Iterator<Integer>{
@@ -632,7 +638,7 @@ public class ObjectIntMap<K> implements Iterable<ObjectIntMap.Entry<K>>{
             return hasNext;
         }
 
-        /** Boxed version of {@link #nextValue()}, for {@link Iterator} compatibility. */
+        //NOTE: incompatible with standard arc
         @Override
         public Integer next(){
             return nextValue();

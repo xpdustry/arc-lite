@@ -703,7 +703,7 @@ public class IntFloatMap implements Iterable<IntFloatMap.Entry>{
             return hasNext;
         }
 
-        /** Boxed version of {@link #nextValue()}, for {@link Iterator} compatibility. */
+        //NOTE: incompatible with standard arc
         @Override
         public Float next(){
             return nextValue();
@@ -728,11 +728,23 @@ public class IntFloatMap implements Iterable<IntFloatMap.Entry>{
             return toSeq(new FloatSeq(true, map.size));
         }
 
+        /** @deprecated use {@link #toSeq()} */
+        @Deprecated
+        public FloatSeq toArray(){
+            return toSeq();
+        }
+
         /** Adds the remaining values to the specified array. */
         public FloatSeq toSeq(FloatSeq array){
             while(hasNext)
                 array.add(nextValue());
             return array;
+        }
+
+        /** @deprecated use {@link #toSeq(FloatSeq)} */
+        @Deprecated
+        public FloatSeq toArray(FloatSeq array){
+            return toSeq(array);
         }
 
     }
@@ -748,7 +760,7 @@ public class IntFloatMap implements Iterable<IntFloatMap.Entry>{
             return hasNext;
         }
 
-        /** Boxed version of {@link #nextKey()}, for {@link Iterator} compatibility. */
+        //NOTE: incompatible with standard arc
         @Override
         public Integer next(){
             return nextKey();
@@ -773,11 +785,23 @@ public class IntFloatMap implements Iterable<IntFloatMap.Entry>{
             return toSeq(new IntSeq(true, map.size));
         }
 
+        /** @deprecated use {@link #toSeq()} */
+        @Deprecated
+        public IntSeq toArray(){
+            return toSeq();
+        }
+
         /** Adds the remaining keys to the specified array. */
         public IntSeq toSeq(IntSeq array){
             while(hasNext)
                 array.add(nextKey());
             return array;
+        }
+
+        /** @deprecated use {@link #toSeq(IntSeq)} */
+        @Deprecated
+        public IntSeq toArray(IntSeq array){
+            return toSeq(array);
         }
 
     }

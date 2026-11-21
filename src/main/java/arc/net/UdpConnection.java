@@ -7,6 +7,7 @@ import java.nio.channels.*;
 
 import arc.util.Disposable;
 import arc.util.Time;
+import arc.util.io.Streams;
 import arc.util.pooling.ByteBufferPool;
 
 /**
@@ -23,6 +24,10 @@ public class UdpConnection implements Disposable{
     private final Object writeLock = new Object();
     private volatile long lastCommunicationTime;
     private volatile boolean readPaused, disposed;
+
+    public UdpConnection(NetSerializer serialization, int bufferSize){
+        this(serialization, bufferSize, false);
+    }
 
     public UdpConnection(NetSerializer serialization, int bufferSize, boolean direct){
         this.serialization = serialization;
@@ -164,9 +169,7 @@ public class UdpConnection implements Disposable{
         DatagramChannel datagramChannel = this.datagramChannel;
         if(datagramChannel == null) return;
         this.datagramChannel = null;
-        try{
-            datagramChannel.close();
-        }catch(IOException ignored){}
+        Streams.close(datagramChannel);
         SelectionKey key = selectionKey;
         if(key != null) key.selector().wakeup();
     }

@@ -48,10 +48,13 @@ public class OrderedSet<T> extends ObjectSet<T>{
      */
     public boolean add(T key, int index){
         if(key == null) return false;
+        if(index < 0 || index > items.size) throw new IndexOutOfBoundsException("index can't be > size: " + index + " > " + size);
         if(!super.add(key)){
-            // The key in the set can be another instance (equals() but not ==), so don't search by identity
             int oldIndex = items.indexOf(key, false);
-            if(oldIndex != -1 && oldIndex != index) items.insert(index, items.remove(oldIndex));
+            if(oldIndex != index){
+                T old = items.remove(oldIndex);
+                items.insert(Math.min(index, items.size), old);
+            }
             return false;
         }
         items.insert(index, key);
@@ -60,9 +63,7 @@ public class OrderedSet<T> extends ObjectSet<T>{
 
     public void addAll(OrderedSet<T> set){
         ensureCapacity(set.size);
-        T[] keys = set.items.items;
-        for(int i = 0, n = set.items.size; i < n; i++)
-            add(keys[i]);
+        set.items.each(this::add);
     }
 
     public void ensureCapacity(int additionalCapacity){
@@ -92,7 +93,7 @@ public class OrderedSet<T> extends ObjectSet<T>{
      * @return true if {@code before} was removed and {@code after} was added, false otherwise
      */
     public boolean alter(T before, T after){
-        if(contains(after)) return false;
+        if(after == null || contains(after)) return false;
         if(!super.remove(before)) return false;
         super.add(after);
         items.set(items.indexOf(before, false), after);
@@ -108,7 +109,7 @@ public class OrderedSet<T> extends ObjectSet<T>{
      * @return true if {@code after} successfully replaced the contents at {@code index}, false otherwise
      */
     public boolean alterIndex(int index, T after){
-        if(index < 0 || index >= size || contains(after)) return false;
+        if(index < 0 || index >= size || after == null || contains(after)) return false;
         super.remove(items.get(index));
         super.add(after);
         items.set(index, after);

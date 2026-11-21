@@ -54,24 +54,24 @@ public final class ArcDns{
             Core.app.getDnsServers(nameservers);
         }
 
+        boolean found = false;
         for(NameserverProvider provider : nameserverProviders){
-            if(provider.isEnabled()){
-                try{
-                    nameservers.addAll(provider.getNameservers());
-                    // Stop when a name server is found
-                    if(!nameservers.isEmpty()) return;
-                }catch(Exception e){
-                    Log.warn("[DNS] Failed to initialize provider: @", e);
+            if(!provider.isEnabled()) continue;
+            try{
+                nameservers.addAll(provider.getNameservers());
+                // Stop when a name server is found
+                if(!nameservers.isEmpty()){
+                    found = true;
+                    break;
                 }
+            }catch(Exception e){
+                Log.warn("[DNS] Failed to initialize provider: @", e);
             }
         }
 
-        for(InetSocketAddress server : nameservers){
-            Log.debug("[DNS] Added @ to nameservers", server);
-        }
-
         // Add localhost as nameserver if no suitable nameserver provider found
-        nameservers.add(new InetSocketAddress(InetAddress.getLoopbackAddress(), dnsResolverPort));
+        if(!found) nameservers.add(new InetSocketAddress(InetAddress.getLoopbackAddress(), dnsResolverPort));
+        nameservers.each(server -> Log.debug("[DNS] Added @ to nameservers", server));
     }
 
     /**

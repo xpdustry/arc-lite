@@ -428,7 +428,7 @@ public class IntSet implements Iterable<Integer>{
             return hasNext;
         }
 
-        /** Boxed version of {@link #nextInt()}, for {@link Iterator} compatibility. */
+        //NOTE: incompatible with standard arc
         @Override
         public Integer next(){
             return nextInt();
@@ -451,6 +451,12 @@ public class IntSet implements Iterable<Integer>{
         /** Returns a new array containing the remaining keys. */
         public IntSeq toSeq(){
             return toSeq(new IntSeq(true, set.size));
+        }
+
+        /** @deprecated use {@link #toSeq()} */
+        @Deprecated
+        public IntSeq toArray(){
+            return toSeq();
         }
 
         /** Adds the remaining keys to the specified array. */

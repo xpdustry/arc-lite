@@ -32,13 +32,9 @@ public class PerformanceCounters{
 
     @Override
     public String toString(){
-        counters.sort((a, b) -> -Float.compare(a.load.value, b.load.value));
+        counters.sort(c -> -c.load.value);
         StringBuilder sb = new StringBuilder();
-        sb.setLength(0);
-        for(int i = 0; i < counters.size; i++){
-            counters.get(i).toString(sb);
-            if(i != counters.size - 1) sb.append("\n");
-        }
+        Strings.toSentence(sb, counters, (builder, counter) -> counter.toString(builder), "\n", "\n");
         return sb.toString();
     }
 }

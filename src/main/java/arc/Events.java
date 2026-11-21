@@ -26,18 +26,8 @@ public class Events{
     }
 
     /** Fires an enum trigger. */
-    @SuppressWarnings("rawtypes")
     public static <T extends Enum<T>> void fire(Enum<T> type){
-        if(events.isEmpty()) return; // fast path when events are not used
-        SnapshotSeq<Cons<?>> listeners = events.get(type);
-        if(listeners == null) return;
-        Cons[] items = listeners.begin();
-        try{
-            for (int i = 0, n = listeners.size; i < n; i++)
-                items[i].get(type);
-        }finally{
-            listeners.end();
-        }
+        dispatch(type, type);
     }
 
     /** Fires a non-enum event by class. */
@@ -45,15 +35,19 @@ public class Events{
         fire(type.getClass(), type);
     }
 
-    @SuppressWarnings("rawtypes")
     public static <T> void fire(Class<?> ctype, T type){
+        dispatch(ctype, type);
+    }
+
+    @SuppressWarnings("rawtypes")
+    private static void dispatch(Object key, Object event){
         if(events.isEmpty()) return; // fast path when events are not used
-        SnapshotSeq<Cons<?>> listeners = events.get(ctype);
+        SnapshotSeq<Cons<?>> listeners = events.get(key);
         if(listeners == null) return;
         Cons[] items = listeners.begin();
         try{
-            for (int i = 0, n = listeners.size; i < n; i++)
-                items[i].get(type);
+            for(int i = 0, n = listeners.size; i < n; i++)
+                items[i].get(event);
         }finally{
             listeners.end();
         }

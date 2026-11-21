@@ -96,27 +96,16 @@ public class Jval{
             for(ObjectMap.Entry<String, Jval> e : asObject()){
                 JsonValue child = e.value.toJsonValue();
                 child.name = e.key;
-                last = link(json, last, child);
+                last = json.addChild(last, child);
             }
             return json;
         }
         else if(isArray()){
             JsonValue json = new JsonValue(JsonValue.ValueType.array), last = null;
-            for(Jval j : asArray()) last = link(json, last, j.toJsonValue());
+            for(Jval j : asArray()) last = json.addChild(last, j.toJsonValue());
             return json;
         }
         throw new IllegalStateException("Unable to convert to JsonValue. corrupted Jval?");
-    }
-
-    private static JsonValue link(JsonValue parent, JsonValue last, JsonValue child){
-        child.parent = parent;
-        if(last == null) parent.child = child;
-        else{
-            last.next = child;
-            child.prev = last;
-        }
-        parent.size++;
-        return child;
     }
 
     /** @return the underlying object. May be a string, number, boolean, JsonArray, JsonMap or null. */

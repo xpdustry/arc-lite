@@ -1,11 +1,11 @@
 package arc.util.serialization;
 
 import arc.files.*;
+import arc.func.*;
 import arc.struct.*;
 import arc.struct.Queue;
 import arc.util.*;
 import arc.util.io.*;
-import arc.util.Timer;
 import arc.util.serialization.JsonWriter.*;
 
 import java.io.*;
@@ -163,10 +163,16 @@ public class Json{
     }
 
     public <T> Serializer<T> getInheritSerializer(Class<T> type){
-        Class found = inheritSerializers.orderedKeys().find(c -> c.isAssignableFrom(type));
-        if (found != null) return inheritSerializers.get(found);
-        found = defaultInheritSerializers.orderedKeys().find(c -> c.isAssignableFrom(type));
-        if (found != null) return defaultInheritSerializers.get(found);
+        Serializer<T> serializer = findInheritSerializer(inheritSerializers, type);
+        return serializer != null ? serializer : findInheritSerializer(defaultInheritSerializers, type);
+    }
+
+    private static Serializer findInheritSerializer(OrderedMap<Class, Serializer> serializers, Class type){
+        Seq<Class> keys = serializers.orderedKeys();
+        for(int i = 0; i < keys.size; i++){
+            Class parent = keys.get(i);
+            if(parent.isAssignableFrom(type)) return serializers.get(parent);
+        }
         return null;
     }
 
@@ -586,14 +592,14 @@ public class Json{
                 return;
             }
 
-            if((knownType != null && knownType.isPrimitive()) || knownType == String.class || Reflect.isWrapper(knownType)){
+            if(Reflect.isValueType(knownType) || !isTypeNameSet() && Reflect.isValueType(value.getClass())){
                 writer.value(value);
                 return;
             }
 
             Class actualType = findActualType(value.getClass());
 
-            if(actualType.isPrimitive() || actualType == String.class || Reflect.isWrapper(actualType)){
+            if(Reflect.isValueType(actualType)){
                 writeObjectStart(actualType, null);
                 writeValue("value", value);
                 writeObjectEnd();
@@ -1123,6 +1129,13 @@ public class Json{
     public <T> T readValue(Class<T> type, Class elementType, JsonValue jsonData){
         return readValue(type, elementType, (Class)null, jsonData);
     }
+
+    /** @deprecated use {@link #readValue(Class, Class, Class, JsonValue)} */
+    @Deprecated
+    public <T> T readValue(Class<T> type, Class elementType, JsonValue jsonData, Class keyType){
+        return readValue(type, elementType, keyType, jsonData);
+    }
+
     /**
      * @param type May be null if the type is unknown.
      * @param elementType May be null if the type is unknown.
@@ -1160,7 +1173,7 @@ public class Json{
             }
 
             if(jsonData.isObject()){
-                if(type.isPrimitive() || type == String.class || Reflect.isWrapper(type)) {
+                if(Reflect.isValueType(type)){
                     return readValue("value", type, jsonData);
                 }
 
@@ -1187,40 +1200,47 @@ public class Json{
             return (T)result;
         }
 
+        return readPrimitive(type, jsonData);
+    }
+
+    protected <T> T readPrimitive(Class<T> type, JsonValue jsonData){
+        Class<?> boxed = type == Object.class ? null : Reflect.box(type);
+
         if(jsonData.isNumber()){
             try{
-                if(type == null || type == float.class || type == Float.class) return (T)(Float)jsonData.asFloat();
-                if(type == int.class || type == Integer.class) return (T)(Integer)jsonData.asInt();
-                if(type == long.class || type == Long.class) return (T)(Long)jsonData.asLong();
-                if(type == double.class || type == Double.class) return (T)(Double)jsonData.asDouble();
-                if(type == String.class) return (T)jsonData.asString();
-                if(type == short.class || type == Short.class) return (T)(Short)jsonData.asShort();
-                if(type == byte.class || type == Byte.class) return (T)(Byte)jsonData.asByte();
+                if(boxed == null || boxed == Number.class) return jsonData.isLong() ? (T)(Long)jsonData.asLong() : (T)(Double)jsonData.asDouble();
+                if(boxed == Float.class) return (T)(Float)jsonData.asFloat();
+                if(boxed == Integer.class) return (T)(Integer)jsonData.asInt();
+                if(boxed == Long.class) return (T)(Long)jsonData.asLong();
+                if(boxed == Double.class) return (T)(Double)jsonData.asDouble();
+                if(boxed == String.class) return (T)jsonData.asString();
+                if(boxed == Short.class) return (T)(Short)jsonData.asShort();
+                if(boxed == Byte.class) return (T)(Byte)jsonData.asByte();
             }catch(NumberFormatException ignored){}
             jsonData = new JsonValue(jsonData.asString());
         }
 
         if(jsonData.isBoolean()){
             try{
-                if(type == null || type == boolean.class || type == Boolean.class) return (T)(Boolean)jsonData.asBoolean();
+                if(boxed == null || boxed == Boolean.class) return (T)(Boolean)jsonData.asBoolean();
             }catch(NumberFormatException ignored){}
             jsonData = new JsonValue(jsonData.asString());
         }
 
         if(jsonData.isString()){
             String string = jsonData.asString();
-            if(type == null || type == String.class) return (T)string;
+            if(boxed == null || boxed == String.class) return (T)string;
             try{
-                if(type == int.class || type == Integer.class) return (T)Integer.valueOf(string);
-                if(type == float.class || type == Float.class) return string.endsWith("f") ? (T)Float.valueOf(string.substring(0, string.length() - 1)) : string.endsWith("f,") ? (T)Float.valueOf(string.substring(0, string.length() - 2)) : (T)Float.valueOf(string);
-                if(type == long.class || type == Long.class) return (T)Long.valueOf(string);
-                if(type == double.class || type == Double.class) return (T)Double.valueOf(string);
-                if(type == short.class || type == Short.class) return (T)Short.valueOf(string);
-                if(type == byte.class || type == Byte.class) return (T)Byte.valueOf(string);
+                if(boxed == Integer.class) return (T)Integer.valueOf(string);
+                if(boxed == Float.class) return string.endsWith("f") ? (T)Float.valueOf(string.substring(0, string.length() - 1)) : string.endsWith("f,") ? (T)Float.valueOf(string.substring(0, string.length() - 2)) : (T)Float.valueOf(string);
+                if(boxed == Long.class) return (T)Long.valueOf(string);
+                if(boxed == Double.class) return (T)Double.valueOf(string);
+                if(boxed == Short.class) return (T)Short.valueOf(string);
+                if(boxed == Byte.class) return (T)Byte.valueOf(string);
             }catch(NumberFormatException ignored){}
-            if(type == boolean.class || type == Boolean.class) return (T)Boolean.valueOf(string);
-            if(type == char.class || type == Character.class) return (T)(Character)string.charAt(0);
-            if(type == CharSequence.class) return (T)string;
+            if(boxed == Boolean.class) return (T)Boolean.valueOf(string);
+            if(boxed == Character.class && !string.isEmpty()) return (T)(Character)string.charAt(0);
+            if(boxed == CharSequence.class) return (T)string;
             throw new SerializationException("Unable to convert '" + jsonData + "' to " + (type.isArray() ? type.getComponentType() + "[]" : type.getName()));
         }
 
@@ -1257,9 +1277,11 @@ public class Json{
         if(type == null){
             try{
                 type = (Class<T>)Class.forName(className, false, getClass().getClassLoader());
-                // Simple values are written with their class when the known type is unknown (e.g. Seq<Object>)
+                // Allow JDK collections too
                 if(JsonSerializable.class.isAssignableFrom(type) || AllowSerialization.class.isAssignableFrom(type) ||
-                   type == String.class || Reflect.isWrapper(type)){
+                   type == String.class || Reflect.isWrapper(type) ||
+                   className.startsWith("java.util.") &&
+                   (Collection.class.isAssignableFrom(type) || Map.class.isAssignableFrom(type))){
                     return type;
                 }
                 throw new SerializationException("Class must implement JsonSerializable or AllowSerialization: " + className);
@@ -1272,6 +1294,12 @@ public class Json{
 
     private String convertToString(Enum e){
         return enumNames ? e.name() : e.toString();
+    }
+
+    /** @deprecated use {@link #convertToString(Object, Class)} */
+    @Deprecated
+    protected String convertToString(Object object){
+        return convertToString(object, null);
     }
 
     protected String convertToString(Object object, Class knownType){
@@ -1296,7 +1324,12 @@ public class Json{
         return isTypeNameSet() && typeName.equals(child.name);
     }
 
-    protected static Object newInstance(Class type){
+    /** Creates the default type directly, else the specified type with reflection. */
+    protected <T> T newInstance(Class type, Class<?> defaultType, Prov<T> creator){
+        return type == defaultType || type.isInterface() && type.isAssignableFrom(defaultType) ? creator.get() : (T)newInstance(type);
+    }
+
+    protected Object newInstance(Class type){
         try{
             return type.getDeclaredConstructor().newInstance();
         }catch(Exception ex){
@@ -1338,6 +1371,12 @@ public class Json{
     public String prettyPrint(String json){
         return prettyPrint(json, outputType);
     }
+
+    // Here for compatibility
+    @Deprecated public String prettyPrint(Object object, int singleLineColumns){ return prettyPrint(object); }
+    @Deprecated public String prettyPrint(String json, int singleLineColumns){ return prettyPrint(json); }
+    @Deprecated public String prettyPrint(Object object, JsonValue.PrettyPrintSettings settings){ return prettyPrint(object, settings.outputType); }
+    @Deprecated public String prettyPrint(String json, JsonValue.PrettyPrintSettings settings){ return prettyPrint(json, settings.outputType); }
 
     public String prettyPrint(Object object, OutputType outputType){
         return prettyPrint(toJson(object), outputType);
@@ -1414,285 +1453,159 @@ public class Json{
         return null;
     }
 
+    protected static void checkKnownType(Class actualType, Class knownType, Class baseType){
+        if(knownType != null && actualType != knownType && actualType != baseType)
+            throw new SerializationException("Serialization of a " + baseType.getSimpleName()
+                                           + " other than the known type is not supported.\n"
+                                           + "Known type: " + knownType + "\nActual type: " + actualType);
+    }
+
+
+    /** How a struct is written. */
+    public enum StructLayout{
+        /** An object of entries, with the type if needed. */
+        map(null),
+        /** An array of items, which can't hold the type. */
+        array(null),
+        /** An object with the type if needed, and the array of items as {@code values}. */
+        values("values"),
+        /** An array of items, or an object with {@code items} and the type when needed. */
+        items("items");
+
+        public final @Nullable String wrapper;
+        StructLayout(@Nullable String wrapper){
+            this.wrapper = wrapper;
+        }
+    }
+
+    public static class StructSerializer<S> implements Serializer<S>{
+        /** The type created directly, and assumed when writing without known type. */
+        public final Class<?> defaultType;
+        public final StructLayout layout;
+        /** Types of the elements and of the keys of a struct of primitives, replacing the given ones, or null. */
+        public final @Nullable Class fixedElementType, fixedKeyType;
+        public final Prov<S> creator;
+        public final ItemsWriter<S> writer;
+        public final ItemReader<S> reader;
+
+        public StructSerializer(Class<?> defaultType, Prov<S> creator, StructLayout layout, @Nullable Class fixedElementType,
+                                @Nullable Class fixedKeyType, ItemsWriter<S> writer, ItemReader<S> reader){
+            this.defaultType = defaultType;
+            this.creator = creator;
+            this.layout = layout;
+            this.fixedElementType = fixedElementType;
+            this.fixedKeyType = fixedKeyType;
+            this.writer = writer;
+            this.reader = reader;
+        }
+
+        /** Creates the serializer of a list, which writes each item and adds each item read. */
+        public static <S> StructSerializer<S> list(Class<?> defaultType, Prov<S> creator, StructLayout layout,
+                                                   Cons2<S, Cons> each, Cons2<S, Object> add){
+            return list(defaultType, creator, layout, null, each, add);
+        }
+
+        /** @param elementType The type of the items, for a list of primitives. */
+        public static <S> StructSerializer<S> list(Class<?> defaultType, Prov<S> creator, StructLayout layout, @Nullable Class elementType,
+                                                   Cons2<S, Cons> each, Cons2<S, Object> add){
+            return new StructSerializer<>(defaultType, creator, layout, elementType, null,
+                (j, l, e, k) -> each.get(l, item -> j.writeValue(item, e, null)),
+                (j, l, c, e, k) -> add.get(l, j.readValue(e, null, c)));
+        }
+
+        /** Creates the serializer of a map, which writes each entry with its key converted to a string, and puts each entry read. */
+        public static <S> StructSerializer<S> map(Class<?> defaultType, Prov<S> creator,
+                                                  Cons2<S, Cons2> each, Cons3<S, Object, Object> put){
+            return map(defaultType, creator, null, null, each, put);
+        }
+
+        /**
+         * @param keyType The type of the keys, for a map of primitive keys.
+         * @param valueType The type of the values, for a map of primitive values. The element type given is then the key type.
+         */
+        public static <S> StructSerializer<S> map(Class<?> defaultType, Prov<S> creator, @Nullable Class keyType, @Nullable Class valueType,
+                                                  Cons2<S, Cons2> each, Cons3<S, Object, Object> put){
+            return new StructSerializer<>(defaultType, creator, StructLayout.map, valueType, keyType,
+                (j, m, e, k) -> each.get(m, (key, value) -> j.writeValue(j.convertToString(key, k), value, e)),
+                (j, m, c, e, k) -> put.get(m, j.convertFromString(c.name, k), j.readValue(e, null, c)));
+        }
+
+        /** @return the fixed type of the elements, else the given one. */
+        public Class elementType(Class elementType){
+            return fixedElementType != null ? fixedElementType : elementType;
+        }
+
+        /** @return the fixed type of the keys, else the given one, else the given element type if the type of the elements is fixed. */
+        public Class keyType(Class elementType, Class keyType){
+            if(fixedKeyType != null) return fixedKeyType;
+            return keyType == null && fixedElementType != null ? elementType : keyType;
+        }
+
+        @Override
+        public void write(Json json, S object, Class knownType, Class elementType, Class keyType){
+            Class actualType = findActualType(object.getClass());
+            boolean array = layout != StructLayout.map;
+            boolean wrapped =
+                layout == StructLayout.map || layout == StructLayout.values ||
+                layout == StructLayout.items && json.isTypeNameSet() && actualType != defaultType && knownType != actualType;
+
+            if(wrapped) json.writeObjectStart(actualType, knownType != null ? knownType : defaultType);
+            else if(layout == StructLayout.array) checkKnownType(actualType, knownType, defaultType);
+            if(array && wrapped) json.writeArrayStart(layout.wrapper);
+            else if(array) json.writeArrayStart();
+            writer.write(json, object, elementType(elementType), keyType(elementType, keyType));
+            if(array) json.writeArrayEnd();
+            if(wrapped) json.writeObjectEnd();
+        }
+
+        @Override
+        public S read(Json json, JsonValue jsonData, Class type, Class elementType, Class keyType){
+            S result = json.newInstance(type, defaultType, creator);
+            // A wrapped array can also be read bare
+            JsonValue items = layout.wrapper != null && jsonData.isObject() ? jsonData.get(layout.wrapper) : jsonData;
+            if(items == null) throw new SerializationException("Unable to convert object to struct: "
+                                                             + jsonData + " (" + type.getName() + ")");
+            Class elements = elementType(elementType), keys = keyType(elementType, keyType);
+            for(JsonValue child = items.child; child != null; child = child.next){
+                if(layout != StructLayout.map || !json.isTypeField(child))
+                    reader.read(json, result, child, elements, keys);
+            }
+            return result;
+        }
+
+        public interface ItemsWriter<S>{
+            void write(Json json, S struct, Class elementType, Class keyType);
+        }
+
+        public interface ItemReader<S>{
+            void read(Json json, S struct, JsonValue child, Class elementType, Class keyType);
+        }
+    }
+
+
     // Default serializers
     static{
-        // Array serializers
-        defaultInheritSerializers.put(Seq.class, new Serializer<Seq>(){
-            @Override
-            public void write(Json json, Seq object, Class knownType, Class elementType, Class keyType){
-                Class actualType = findActualType(object.getClass());
-                if(knownType != null && actualType != knownType && actualType != Seq.class)
-                    throw new SerializationException("Serialization of an Array other than the known type is not supported.\n"
-                            + "Known type: " + knownType + "\nActual type: " + actualType);
-                json.writeArrayStart();
-                Seq array = (Seq)object;
-                for(int i = 0, n = array.size; i < n; i++)
-                    json.writeValue(array.get(i), elementType, null);
-                json.writeArrayEnd();
-            }
+        // Lists
+        defaultInheritSerializers.put(Seq.class, StructSerializer.list(Seq.class, Seq::new, StructLayout.array, Seq::each, Seq::add));
+        defaultInheritSerializers.put(Queue.class, StructSerializer.list(Queue.class, Queue::new, StructLayout.array, Queue::each, Queue::addLast));
+        defaultInheritSerializers.put(IntSeq.class, StructSerializer.list(IntSeq.class, IntSeq::new, StructLayout.array, Integer.class,
+            (s, c) -> s.each(c::get), (s, v) -> s.add((Integer)v)));
+        defaultInheritSerializers.put(ObjectSet.class, StructSerializer.list(ObjectSet.class, ObjectSet::new, StructLayout.values, ObjectSet::each, ObjectSet::add));
+        defaultInheritSerializers.put(IntSet.class, StructSerializer.list(IntSet.class, IntSet::new, StructLayout.values, Integer.class,
+            (s, c) -> s.each(c::get), (s, v) -> s.add((Integer)v)));
+        defaultInheritSerializers.put(Collection.class, StructSerializer.<Collection>list(ArrayList.class, ArrayList::new, StructLayout.items, Structs::each, Collection::add));
 
-            @Override
-            public Seq read(Json json, JsonValue jsonData, Class type, Class elementType, Class keyType){
-                Seq result = type == Seq.class ? new Seq() : (Seq)newInstance(type);
-                for(JsonValue child = jsonData.child; child != null; child = child.next)
-                    result.add(json.readValue(elementType, null, child));
-                return result;
-            }
-        });
-
-        defaultInheritSerializers.put(ObjectSet.class, new Serializer<ObjectSet>(){
-            @Override
-            public void write(Json json, ObjectSet object, Class knownType, Class elementType, Class keyType){
-                Class actualType = findActualType(object.getClass());
-                if(knownType == null) knownType = ObjectSet.class;
-                json.writeObjectStart(actualType, knownType);
-                json.writeArrayStart("values");
-                for(Object entry : (ObjectSet)object)
-                    json.writeValue(entry, elementType, null);
-                json.writeArrayEnd();
-                json.writeObjectEnd();
-            }
-
-            @Override
-            public ObjectSet read(Json json, JsonValue jsonData, Class type, Class elementType, Class keyType){
-                ObjectSet result = type == ObjectSet.class ? new ObjectSet() : (ObjectSet)newInstance(type);
-                JsonValue first = jsonData.isObject() ? jsonData.getChild("values") : jsonData.child;
-                for(JsonValue child = first; child != null; child = child.next)
-                    result.add(json.readValue(elementType, null, child));
-                return result;
-            }
-        });
-
-        defaultInheritSerializers.put(IntSet.class, new Serializer<IntSet>(){
-            @Override
-            public void write(Json json, IntSet object, Class knownType, Class elementType, Class keyType){
-                Class actualType = findActualType(object.getClass());
-                if(knownType == null) knownType = IntSet.class;
-                json.writeObjectStart(actualType, knownType);
-                json.writeArrayStart("values");
-                for(IntSet.IntSetIterator iter = ((IntSet)object).iterator(); iter.hasNext;)
-                    json.writeValue(iter.next(), Integer.class, null);
-                json.writeArrayEnd();
-                json.writeObjectEnd();
-            }
-
-            @Override
-            public IntSet read(Json json, JsonValue jsonData, Class type, Class elementType, Class keyType){
-                IntSet result = type == IntSet.class ? new IntSet() : (IntSet)newInstance(type);
-                for(JsonValue child = jsonData.getChild("values"); child != null; child = child.next)
-                    result.add(child.asInt());
-                return result;
-            }
-        });
-
-        defaultInheritSerializers.put(IntSeq.class, new Serializer<IntSeq>(){
-            @Override
-            public void write(Json json, IntSeq object, Class knownType, Class elementType, Class keyType){
-                json.writeArrayStart();
-                IntSeq array = (IntSeq)object;
-                for(int i = 0, n = array.size; i < n; i++)
-                    json.writeValue(array.get(i), Integer.class, null);
-                json.writeArrayEnd();
-            }
-
-            @Override
-            public IntSeq read(Json json, JsonValue jsonData, Class type, Class elementType, Class keyType){
-                IntSeq result = type == IntSeq.class ? new IntSeq() : (IntSeq)newInstance(type);
-                for(JsonValue child = jsonData.child; child != null; child = child.next)
-                    result.add(child.asInt());
-                return result;
-            }
-        });
-
-        defaultInheritSerializers.put(Queue.class, new Serializer<Queue>(){
-            @Override
-            public void write(Json json, Queue object, Class knownType, Class elementType, Class keyType){
-                Class actualType = findActualType(object.getClass());
-                if(knownType != null && actualType != knownType && actualType != Queue.class)
-                    throw new SerializationException("Serialization of a Queue other than the known type is not supported. "
-                    + "Known type: " + knownType + ". Actual type: " + actualType);
-                json.writeArrayStart();
-                Queue queue = (Queue)object;
-                for(int i = 0, n = queue.size; i < n; i++)
-                    json.writeValue(queue.get(i), elementType, null);
-                json.writeArrayEnd();
-            }
-
-            @Override
-            public Queue read(Json json, JsonValue jsonData, Class type, Class elementType, Class keyType){
-                Queue result = type == Queue.class ? new Queue() : (Queue)newInstance(type);
-                for(JsonValue child = jsonData.child; child != null; child = child.next)
-                    result.addLast(json.readValue(elementType, null, child));
-                return result;
-            }
-        });
-
-        defaultInheritSerializers.put(Collection.class, new Serializer<Collection>(){
-            @Override
-            public void write(Json json, Collection object, Class knownType, Class elementType, Class keyType){
-                Class actualType = findActualType(object.getClass());
-                if(json.isTypeNameSet() && actualType != ArrayList.class && (knownType == null || knownType != actualType)){
-                    json.writeObjectStart(actualType, knownType);
-                    json.writeArrayStart("items");
-                    for(Object item : (Collection)object)
-                        json.writeValue(item, elementType, null);
-                    json.writeArrayEnd();
-                    json.writeObjectEnd();
-                }else{
-                    json.writeArrayStart();
-                    for(Object item : (Collection)object)
-                        json.writeValue(item, elementType, null);
-                    json.writeArrayEnd();
-                }
-            }
-
-            @Override
-            public Collection read(Json json, JsonValue jsonData, Class type, Class elementType, Class keyType){
-                if(jsonData.isObject() && json.isTypeNameSet()) {
-                    jsonData = jsonData.get("items");
-                    if(jsonData == null) throw new SerializationException(
-                        "Unable to convert object to struct: " + jsonData + " (" + type.getName() + ")");
-                }
-                Collection result = type.isInterface() ? new ArrayList() : (Collection)newInstance(type);
-                for(JsonValue child = jsonData.child; child != null; child = child.next)
-                    result.add(json.readValue(elementType, null, child));
-                return result;
-            }
-        });
-
-        // Map serializers
-        defaultInheritSerializers.put(ObjectMap.class, new Serializer<ObjectMap>(){
-            @Override
-            public void write(Json json, ObjectMap object, Class knownType, Class elementType, Class keyType){
-                Class actualType = findActualType(object.getClass());
-                if(knownType == null) knownType = ObjectMap.class;
-                json.writeObjectStart(actualType, knownType);
-                for(ObjectMap.Entry entry : ((ObjectMap<?, ?>)object).entries())
-                    json.writeValue(json.convertToString(entry.key, keyType), entry.value, elementType);
-                json.writeObjectEnd();
-            }
-
-            @Override
-            public ObjectMap read(Json json, JsonValue jsonData, Class type, Class elementType, Class keyType){
-                ObjectMap result = type == ObjectMap.class ? new ObjectMap() : (ObjectMap)newInstance(type);
-                for(JsonValue child = jsonData.child; child != null; child = child.next){
-                    if(json.isTypeField(child)) continue;
-                    result.put(json.convertFromString(child.name, keyType), json.readValue(elementType, null, child));
-                }
-                return result;
-            }
-        });
-
-        defaultInheritSerializers.put(ObjectIntMap.class, new Serializer<ObjectIntMap>(){
-            @Override
-            public void write(Json json, ObjectIntMap object, Class knownType, Class elementType, Class keyType){
-                Class actualType = findActualType(object.getClass());
-                if(knownType == null) knownType = ObjectIntMap.class;
-                json.writeObjectStart(actualType, knownType);
-                for(ObjectIntMap.Entry entry : ((ObjectIntMap<?>)object).entries())
-                    json.writeValue(json.convertToString(entry.key, keyType), entry.value, Integer.class);
-                json.writeObjectEnd();
-            }
-
-            @Override
-            public ObjectIntMap read(Json json, JsonValue jsonData, Class type, Class elementType, Class keyType){
-                ObjectIntMap result = type == ObjectIntMap.class ? new ObjectIntMap() : (ObjectIntMap)newInstance(type);
-                for(JsonValue child = jsonData.child; child != null; child = child.next){
-                    if(json.isTypeField(child)) continue;
-                    result.put(json.convertFromString(child.name, elementType), child.asInt());
-                }
-                return result;
-            }
-        });
-
-        defaultInheritSerializers.put(ObjectFloatMap.class, new Serializer<ObjectFloatMap>(){
-            @Override
-            public void write(Json json, ObjectFloatMap object, Class knownType, Class elementType, Class keyType){
-                Class actualType = findActualType(object.getClass());
-                if(knownType == null) knownType = ObjectFloatMap.class;
-                json.writeObjectStart(actualType, knownType);
-                for(ObjectFloatMap.Entry entry : ((ObjectFloatMap<?>)object).entries())
-                    json.writeValue(json.convertToString(entry.key, keyType), entry.value, Float.class);
-                json.writeObjectEnd();
-            }
-
-            @Override
-            public ObjectFloatMap read(Json json, JsonValue jsonData, Class type, Class elementType, Class keyType){
-                ObjectFloatMap result = type == ObjectFloatMap.class ? new ObjectFloatMap() : (ObjectFloatMap)newInstance(type);
-                for(JsonValue child = jsonData.child; child != null; child = child.next){
-                    if(json.isTypeField(child)) continue;
-                    result.put(json.convertFromString(child.name, elementType), child.asFloat());
-                }
-                return result;
-            }
-        });
-
-        defaultInheritSerializers.put(IntMap.class, new Serializer<IntMap>(){
-            @Override
-            public void write(Json json, IntMap object, Class knownType, Class elementType, Class keyType){
-                Class actualType = findActualType(object.getClass());
-                if(knownType == null) knownType = IntMap.class;
-                json.writeObjectStart(actualType, knownType);
-                for(IntMap.Entry entry : ((IntMap<?>)object).entries())
-                    json.writeValue(Integer.toString(entry.key), entry.value, elementType);
-                json.writeObjectEnd();
-            }
-
-            @Override
-            public IntMap read(Json json, JsonValue jsonData, Class type, Class elementType, Class keyType){
-                IntMap result = type == IntMap.class ? new IntMap() : (IntMap)newInstance(type);
-                for(JsonValue child = jsonData.child; child != null; child = child.next){
-                    if(json.isTypeField(child)) continue;
-                    result.put(Integer.parseInt(child.name), json.readValue(elementType, null, child));
-                }
-                return result;
-            }
-        });
-
-        defaultInheritSerializers.put(ArrayMap.class, new Serializer<ArrayMap>(){
-            @Override
-            public void write(Json json, ArrayMap object, Class knownType, Class elementType, Class keyType){
-                Class actualType = findActualType(object.getClass());
-                if(knownType == null) knownType = ArrayMap.class;
-                json.writeObjectStart(actualType, knownType);
-                ArrayMap map = (ArrayMap)object;
-                for(int i = 0, n = map.size; i < n; i++)
-                    json.writeValue(json.convertToString(map.keys[i], keyType), map.values[i], elementType);
-                json.writeObjectEnd();
-            }
-
-            @Override
-            public ArrayMap read(Json json, JsonValue jsonData, Class type, Class elementType, Class keyType){
-                ArrayMap result = type == ArrayMap.class ? new ArrayMap() : (ArrayMap)newInstance(type);
-                for(JsonValue child = jsonData.child; child != null; child = child.next){
-                    if(json.isTypeField(child)) continue;
-                    result.put(json.convertFromString(child.name, keyType), json.readValue(elementType, null, child));
-                }
-                return result;
-            }
-        });
-
-        defaultInheritSerializers.put(Map.class, new Serializer<Map>(){
-            @Override
-            public void write(Json json, Map object, Class knownType, Class elementType, Class keyType){
-                Class actualType = findActualType(object.getClass());
-                if(knownType == null) knownType = HashMap.class;
-                json.writeObjectStart(actualType, knownType);
-                for(Map.Entry entry : ((Map<?, ?>)object).entrySet())
-                    json.writeValue(json.convertToString(entry.getKey(), keyType), entry.getValue(), elementType);
-                json.writeObjectEnd();
-            }
-
-            @Override
-            public Map read(Json json, JsonValue jsonData, Class type, Class elementType, Class keyType){
-                Map result = type.isInterface() ? new HashMap() : (Map)newInstance(type);
-                for(JsonValue child = jsonData.child; child != null; child = child.next){
-                    if(json.isTypeField(child)) continue;
-                    result.put(json.convertFromString(child.name, keyType), json.readValue(elementType, null, child));
-                }
-                return result;
-            }
-        });
+        // Maps
+        defaultInheritSerializers.put(ObjectMap.class, StructSerializer.map(ObjectMap.class, ObjectMap::new, ObjectMap::each, ObjectMap::put));
+        defaultInheritSerializers.put(ArrayMap.class, StructSerializer.map(ArrayMap.class, ArrayMap::new, ArrayMap::each, ArrayMap::put));
+        defaultInheritSerializers.put(Map.class, StructSerializer.<Map>map(HashMap.class, HashMap::new,
+            (m, c) -> Structs.each(((Map<?, ?>)m).entrySet(), o -> c.get(o.getKey(), o.getValue())), Map::put));
+        defaultInheritSerializers.put(IntMap.class, StructSerializer.map(IntMap.class, IntMap::new, Integer.class, null,
+            IntMap::each, (m, k, v) -> m.put((Integer)k, v)));
+        defaultInheritSerializers.put(ObjectIntMap.class, StructSerializer.map(ObjectIntMap.class, ObjectIntMap::new, null, Integer.class,
+            (m, c) -> Structs.each(((ObjectIntMap<?>)m).entries(), o -> c.get(o.key, o.value)), (m, k, v) -> m.put(k, (Integer)v)));
+        defaultInheritSerializers.put(ObjectFloatMap.class, StructSerializer.map(ObjectFloatMap.class, ObjectFloatMap::new, null, Float.class,
+            ObjectFloatMap::each, (m, k, v) -> m.put(k, (Float)v)));
 
         // Enum
         defaultInheritSerializers.put(Enum.class, new Serializer<Enum>(){

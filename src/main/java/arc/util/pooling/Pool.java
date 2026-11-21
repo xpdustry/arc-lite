@@ -21,6 +21,9 @@ abstract public class Pool<T>{
     private final int mask;
     /** The maximum number of objects that can be pooled. Always a power of two. */
     public final int capacity;
+    /** @deprecated use {@link #capacity} */
+    @Deprecated
+    public final int max;
     /** The highest number of free objects. Can be reset any time. */
     public volatile int peak;
 
@@ -29,9 +32,15 @@ abstract public class Pool<T>{
         this(2048);
     }
 
+    public Pool(int initial, int capacity){
+        this(capacity);
+        fill(initial);
+    }
+
     /** @param capacity The maximum pool capacity. Rounded up to a power of two. */
     public Pool(int capacity){
       this.capacity = capacity <= 1 ? 1 : Integer.highestOneBit(capacity - 1) << 1;
+      this.max = this.capacity;
       this.mask = this.capacity - 1;
       this.head = new AtomicLong();
       this.tail = new AtomicLong();
@@ -76,23 +85,22 @@ abstract public class Pool<T>{
      * The pool does not check if an object is already freed, so the same object must not be freed multiple times.
      */
     public void free(T object){
-        if(!offer(object)) reset(object);
+        offer(object);
     }
 
     /**
      * Same as {@link #free(Object)}, but returns {@code true} if the object has been placed to the pool array.
-     * Else it means that the pool is full. <br>
-     * Object is not reset if rejected, allowing to be used again.
+     * Else it means that the pool is full.
      */
     public boolean offer(T object){
         if(object == null) throw new IllegalArgumentException("object cannot be null.");
+        reset(object);
         for(;;){
             long pos = tail.get();
             int i = (int)pos & mask;
             long dif = sequences.get(i) - pos;
             if(dif < 0) return false; // Pool full or slot in mid-reading, cut
             else if(dif == 0 && tail.compareAndSet(pos, pos + 1)){
-                reset(object);
                 pool.lazySet(i, object); // Published by the sequence
                 sequences.lazySet(i, pos + 1);
                 peak = Math.max(peak, (int)(pos + 1 - head.get()));
@@ -121,7 +129,7 @@ abstract public class Pool<T>{
         for(int i = 0; i < objects.size; i++){
             T object = objects.get(i);
             if(object == null) continue;
-            if(!offer(object)) reset(object);
+            offer(object);
         }
     }
 

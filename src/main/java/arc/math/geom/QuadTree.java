@@ -34,35 +34,29 @@ public class QuadTree<T extends QuadTreeObject>{
 
     protected void split(){
         if(!leaf || bounds.width <= minNodeSize || bounds.height <= minNodeSize) return;
-
-        float subW = bounds.width / 2;
-        float subH = bounds.height / 2;
-
-        if(botLeft == null){
-            botLeft = newChild(new Rect(bounds.x, bounds.y, subW, subH));
-            botRight = newChild(new Rect(bounds.x + subW, bounds.y, subW, subH));
-            topLeft = newChild(new Rect(bounds.x, bounds.y + subH, subW, subH));
-            topRight = newChild(new Rect(bounds.x + subW, bounds.y + subH, subW, subH));
-        }
+        createChildren();
         leaf = false;
-
-        //TODO: crappy
-        Object[] items = objects.items;
 
         // Transfer objects to children if they fit entirely in one
         for(int i = 0; i < objects.size; i++){
-            @SuppressWarnings("unchecked")
-            T obj = (T)items[i];
+            T obj = objects.get(i);
             hitbox(obj);
             QuadTree<T> child = getFittingChild(tmp);
             if(child != null){
                 child.insert(obj);
-                objects.size --;
-                items[i] = items[objects.size];
-                items[objects.size] = null;
-                i --;
+                objects.remove(i--);
             }
         }
+    }
+
+    protected void createChildren(){
+        if(botLeft != null) return;
+        float subW = bounds.width / 2;
+        float subH = bounds.height / 2;
+        botLeft = newChild(new Rect(bounds.x, bounds.y, subW, subH));
+        botRight = newChild(new Rect(bounds.x + subW, bounds.y, subW, subH));
+        topLeft = newChild(new Rect(bounds.x, bounds.y + subH, subW, subH));
+        topRight = newChild(new Rect(bounds.x + subW, bounds.y + subH, subW, subH));
     }
 
     protected void unsplit(){
@@ -118,14 +112,7 @@ public class QuadTree<T extends QuadTreeObject>{
             return;
         }
 
-        if(botLeft == null){
-            float subW = bounds.width / 2;
-            float subH = bounds.height / 2;
-            botLeft = newChild(new Rect(bounds.x, bounds.y, subW, subH));
-            botRight = newChild(new Rect(bounds.x + subW, bounds.y, subW, subH));
-            topLeft = newChild(new Rect(bounds.x, bounds.y + subH, subW, subH));
-            topRight = newChild(new Rect(bounds.x + subW, bounds.y + subH, subW, subH));
-        }
+        createChildren();
         leaf = false;
 
         if(fillBL == null){
@@ -244,12 +231,11 @@ public class QuadTree<T extends QuadTreeObject>{
             if(botRight.bounds.overlaps(x, y, width, height)) botRight.intersect(x, y, width, height, out);
         }
 
-        objects.each(o -> {
-            hitbox(o);
-            if(tmp.overlaps(x, y, width, height)){
-                out.get(o);
-            }
-        });
+        for(int i = 0; i < objects.size; i++){
+            T item = objects.get(i);
+            hitbox(item);
+            if(tmp.overlaps(x, y, width, height)) out.get(item);
+        }
     }
 
     /**
@@ -258,17 +244,7 @@ public class QuadTree<T extends QuadTreeObject>{
      * This will never result in false positives.
      */
     public boolean intersect(float x, float y, float width, float height, Boolf<T> out){
-        if(!leaf){
-            if(topLeft.bounds.overlaps(x, y, width, height) && topLeft.intersect(x, y, width, height, out)) return true;
-            if(topRight.bounds.overlaps(x, y, width, height) && topRight.intersect(x, y, width, height, out)) return true;
-            if(botLeft.bounds.overlaps(x, y, width, height) && botLeft.intersect(x, y, width, height, out)) return true;
-            if(botRight.bounds.overlaps(x, y, width, height)&& botRight.intersect(x, y, width, height, out)) return true;
-        }
-
-        return objects.contains(o -> {
-            hitbox(o);
-            return tmp.overlaps(x, y, width, height) && out.get(o);
-        });
+        return find(x, y, width, height, out) != null;
     }
 
     /**
@@ -285,10 +261,12 @@ public class QuadTree<T extends QuadTreeObject>{
             if(botRight.bounds.overlaps(x, y, width, height)&& (result = botRight.find(x, y, width, height, out)) != null) return result;
         }
 
-        return objects.find(o -> {
-            hitbox(o);
-            return tmp.overlaps(x, y, width, height) && out.get(o);
-        });
+        for(int i = 0; i < objects.size; i++){
+            T item = objects.get(i);
+            hitbox(item);
+            if(tmp.overlaps(x, y, width, height) && out.get(item)) return item;
+        }
+        return null;
     }
 
     /**
@@ -296,7 +274,7 @@ public class QuadTree<T extends QuadTreeObject>{
      * This will never result in false positives.
      */
     public boolean any(float x, float y, float width, float height){
-        return intersect(x, y, width, height, o -> true);
+        return find(x, y, width, height, o -> true) != null;
     }
 
     /**

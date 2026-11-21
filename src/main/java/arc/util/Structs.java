@@ -13,6 +13,11 @@ public class Structs{
         return (a == b) || (a != null && a.equals(b));
     }
 
+    @SuppressWarnings("unchecked")
+    public static <T> T self(Object o) {
+        return (T)o;
+    }
+
     @SafeVarargs
     public static <T> T[] arr(T... array){
         return array;
@@ -336,6 +341,13 @@ public class Structs{
     public static <T> void each(Cons<T> cons, T... objects){
         for(T t : objects){
             cons.get(t);
+        }
+    }
+
+    @SafeVarargs
+    public static <T> void each(Boolf<T> pred, Cons<T> cons, T... objects){
+        for(T t : objects){
+            if(pred.get(t)) cons.get(t);
         }
     }
 

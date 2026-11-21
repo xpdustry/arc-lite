@@ -103,17 +103,8 @@ public class JsonWriterBuilder implements BaseJsonWriter, Poolable{
     }
 
     private void addValue(JsonValue value){
-        if(current.child == null || last == null){
-            current.addChild(name, value); // appended at the end
-            last = value;
-        }else{
-            value.name = name;
-            value.parent = current;
-            value.prev = last;
-            last.next = value;
-            last = value;
-            current.size++;
-        }
+        value.name = name;
+        last = current.addChild(last, value);
         name = null;
     }
 

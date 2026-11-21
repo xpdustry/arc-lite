@@ -27,6 +27,7 @@ import java.util.*;
 
 import arc.struct.ObjectSet;
 import arc.util.Reflect;
+import arc.util.io.Streams;
 
 
 public class NioUtils {
@@ -36,7 +37,8 @@ public class NioUtils {
   private static long sko, psko;
   private static Method pom;
 
-  private static void applyOptimizations(Selector selector) throws Exception {
+  /** Synchronized, as a field offset seen before being computed would make Unsafe write anywhere in the selector. */
+  private static synchronized void applyOptimizations(Selector selector) throws Exception {
     // Cache fields via reflection. Will also determine whether the use of Unsafe is needed.
     if (skf == null || pskf == null) {
       // Find the class. The name never changed, but keep that safe.
@@ -72,17 +74,19 @@ public class NioUtils {
       pom = clazz.getDeclaredMethod("putObject", Object.class, long.class, Object.class);
     }
 
+    // Ensure type
+    if (!skf.getDeclaringClass().isInstance(selector)) throw new RuntimeException("Selector is not a 'sun.nio.ch.SelectorImpl'");
     // Change fields with same set
     Set<Object> set = new CompatibleObjectSet<>();
-    if (useUnsafe) {
-      pom.invoke(theUnsafe, selector, sko, set);
-      pom.invoke(theUnsafe, selector, psko, set);
-    } else {
-      skf.set(selector, set);
-      pskf.set(selector, set);
-    }
+    setField(selector, skf, sko, set);
+    setField(selector, pskf, psko, set);
 
     // Successfully optimized
+  }
+
+  private static void setField(Selector selector, Field field, long offset, Object value) throws Exception {
+    if (useUnsafe) pom.invoke(theUnsafe, selector, offset, value);
+    else field.set(selector, value);
   }
 
   public static Selector newSelector() throws IOException {
@@ -100,8 +104,7 @@ public class NioUtils {
         applyOptimizations(selector);
         return selector;
       } catch (Exception e) {
-        try { selector.close(); }
-        catch (Exception ignored) {}
+        Streams.close(selector);
         throw new RuntimeException("Cannot optimize new selector with reflection or unsafe", e);
       }
   }
