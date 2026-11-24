@@ -7,6 +7,11 @@ import java.lang.reflect.*;
 @SuppressWarnings("unchecked")
 public class Reflect{
 
+    /** Type is erased to {@link Object}. */
+    public static <T> T[] newArray(int length){
+        return (T[])new Object[length];
+    }
+
     public static <T> T[] newArray(Class<T> type, int length){
         return (T[])Array.newInstance(type, length);
     }

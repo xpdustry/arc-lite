@@ -1,25 +1,13 @@
 package arc.struct;
 
 import arc.func.*;
-import arc.util.ArcRuntimeException;
 
 import java.util.*;
 
 /** Queue for ints. */
-public class IntQueue implements Iterable<Integer>{
-    /** Number of elements in the queue. */
-    public int size = 0;
+public class IntQueue extends BaseQueue<IntQueue.IntQueueIterator, IntQueue> implements Iterable<Integer>{
     /** Contains the values in the queue. Head and tail indices go in a circle around this array, wrapping at the end. */
     public int[] values;
-    /** Index of first element. Logically smaller than tail. Unless empty, it points to a valid element inside queue. */
-    protected int head = 0;
-    /**
-     * Index of last element. Logically bigger than head. Usually points to an empty position, but points to the head when full
-     * (size == values.length).
-     */
-    protected int tail = 0;
-
-    private IntQueueIterator iterator1, iterator2;
 
     /** Creates a new Queue which can hold 16 values without needing to resize backing array. */
     public IntQueue(){
@@ -32,25 +20,15 @@ public class IntQueue implements Iterable<Integer>{
     }
 
     public void each(Intc consumer){
-        final int[] values = this.values;
-        for(int index = 0; index < size; index++){
-            int i = head + index;
-            if(i >= values.length){
-                i -= values.length;
-            }
-            consumer.get(values[i]);
+        for(int i = 0; i < size; i++){
+            consumer.get(values[index(i)]);
         }
     }
 
     public int sum(){
-        final int[] values = this.values;
         int sum = 0;
-        for(int index = 0; index < size; index++){
-            int i = head + index;
-            if(i >= values.length){
-                i -= values.length;
-            }
-            sum += values[i];
+        for(int i = 0; i < size; i++){
+            sum += values[index(i)];
         }
         return sum;
     }
@@ -60,18 +38,8 @@ public class IntQueue implements Iterable<Integer>{
      * @param object can be null
      */
     public void addLast(int object){
-        int[] values = this.values;
-
-        if(size == values.length){
-            resize(values.length << 1);// * 2
-            values = this.values;
-        }
-
-        values[tail++] = object;
-        if(tail == values.length){
-            tail = 0;
-        }
-        size++;
+        int at = addLastIndex();
+        values[at] = object;
     }
 
     /**
@@ -80,27 +48,14 @@ public class IntQueue implements Iterable<Integer>{
      * @see #addLast(int)
      */
     public void addFirst(int object){
-        int[] values = this.values;
-
-        if(size == values.length){
-            resize(values.length << 1);// * 2
-            values = this.values;
-        }
-
-        int head = this.head;
-        head--;
-        if(head == -1){
-            head = values.length - 1;
-        }
-        values[head] = object;
-
-        this.head = head;
-        this.size++;
+        int at = addFirstIndex();
+        values[at] = object;
     }
 
     /**
-     * Reduces the size of the backing array to the size of the actual items. This is useful to release memory when many items
-     * have been removed, or if it is known that more items will not be added.
+     * Reduces the size of the backing array to the size of the actual items.
+     * This is useful to release memory when many items have been removed,
+     * or if it is known that more items will not be added.
      * @return {@link #values}
      */
     public int[] shrink(){
@@ -108,36 +63,56 @@ public class IntQueue implements Iterable<Integer>{
         return values;
     }
 
-    /**
-     * Increases the size of the backing array to accommodate the specified number of additional items. Useful before adding many
-     * items to avoid multiple backing array resizes.
-     */
-    public void ensureCapacity(int additional){
-        final int needed = size + additional;
-        if(values.length < needed){
-            resize(needed);
-        }
+    @Override
+    protected Object items(){
+        return values;
+    }
+
+    @Override
+    public int capacity(){
+        return values.length;
     }
 
     /** Resize backing array. newSize must be bigger than current size. */
+    @Override
     protected void resize(int newSize){
-        final int[] values = this.values;
-        final int head = this.head;
-        final int tail = this.tail;
+        int[] newArray = new int[newSize];
+        copyTo(newArray, newSize);
+        values = newArray;
+    }
 
-        final int[] newArray = new int[newSize];
-        if(head < tail){
-            // Continuous
-            System.arraycopy(values, head, newArray, 0, tail - head);
-        }else if(size > 0){
-            // Wrapped
-            final int rest = values.length - head;
-            System.arraycopy(values, head, newArray, 0, rest);
-            System.arraycopy(values, 0, newArray, rest, tail);
-        }
-        this.values = newArray;
-        this.head = 0;
-        this.tail = size;
+    @Override
+    protected IntQueue create(int capacity){
+        return new IntQueue(capacity);
+    }
+
+    @Override
+    protected boolean sameType(Object other){
+        return other instanceof IntQueue;
+    }
+
+    @Override
+    public IntQueueIterator newIterator(){
+        return new IntQueueIterator(this);
+    }
+
+    @Override
+    protected void freeItems(int from, int to){
+    }
+
+    @Override
+    protected boolean equalItem(IntQueue other, int otherIndex, int index){
+        return values[index(index)] == other.values[other.index(otherIndex)];
+    }
+
+    @Override
+    protected void appendItem(StringBuilder buffer, int at){
+        buffer.append(values[at]);
+    }
+
+    @Override
+    protected int hashItem(int at){
+        return values[at];
     }
 
     /**
@@ -146,21 +121,9 @@ public class IntQueue implements Iterable<Integer>{
      * @throws NoSuchElementException when queue is empty
      */
     public int removeFirst(){
-        if(size == 0){
-            // Underflow
-            throw new NoSuchElementException("Queue is empty.");
-        }
-
-        final int[] values = this.values;
-
-        final int result = values[head];
-        values[head] = 0;
-        head++;
-        if(head == values.length){
-            head = 0;
-        }
-        size--;
-
+        int at = removeFirstIndex();
+        int result = values[at];
+        values[at] = 0;
         return result;
     }
 
@@ -171,21 +134,9 @@ public class IntQueue implements Iterable<Integer>{
      * @see #removeFirst()
      */
     public int removeLast(){
-        if(size == 0){
-            throw new NoSuchElementException("Queue is empty.");
-        }
-
-        final int[] values = this.values;
-        int tail = this.tail;
-        tail--;
-        if(tail == -1){
-            tail = values.length - 1;
-        }
-        final int result = values[tail];
-        values[tail] = 0;
-        this.tail = tail;
-        size--;
-
+        int at = removeLastIndex();
+        int result = values[at];
+        values[at] = 0;
         return result;
     }
 
@@ -194,17 +145,8 @@ public class IntQueue implements Iterable<Integer>{
      * @return An index of first occurrence of value in queue or -1 if no such value exists
      */
     public int indexOf(int value){
-        if(size == 0) return -1;
-        int[] values = this.values;
-        final int head = this.head, tail = this.tail;
-        if(head < tail){
-            for(int i = head; i < tail; i++)
-                if(values[i] == value) return i - head;
-        }else{
-            for(int i = head, n = values.length; i < n; i++)
-                if(values[i] == value) return i - head;
-            for(int i = 0; i < tail; i++)
-                if(values[i] == value) return i + values.length - head;
+        for(int i = 0; i < size; i++){
+            if(values[index(i)] == value) return i;
         }
         return -1;
     }
@@ -222,37 +164,11 @@ public class IntQueue implements Iterable<Integer>{
 
     /** Removes and returns the item at the specified index. */
     public int removeIndex(int index){
-        if(index < 0) throw new IndexOutOfBoundsException("index can't be < 0: " + index);
-        if(index >= size) throw new IndexOutOfBoundsException("index can't be >= size: " + index + " >= " + size);
-
-        int[] values = this.values;
-        int head = this.head, tail = this.tail;
-        index += head;
-        int value;
-        if(head < tail){ // index is between head and tail.
-            value = values[index];
-            System.arraycopy(values, index + 1, values, index, tail - index);
-            this.tail--;
-        }else if(index >= values.length){ // index is between 0 and tail.
-            index -= values.length;
-            value = values[index];
-            System.arraycopy(values, index + 1, values, index, tail - index);
-            this.tail--;
-        }else{ // index is between head and values.length.
-            value = values[index];
-            System.arraycopy(values, head, values, head + 1, index - head);
-            this.head++;
-            if(this.head == values.length){
-                this.head = 0;
-            }
-        }
-        size--;
+        checkIndex(index);
+        int at = index(index);
+        int value = values[at];
+        removeAt(at);
         return value;
-    }
-
-    /** Returns true if the queue is empty. */
-    public boolean isEmpty(){
-        return size == 0;
     }
 
     /**
@@ -262,10 +178,7 @@ public class IntQueue implements Iterable<Integer>{
      * @see #removeFirst()
      */
     public int first(){
-        if(size == 0){
-            // Underflow
-            throw new NoSuchElementException("Queue is empty.");
-        }
+        checkNotEmpty();
         return values[head];
     }
 
@@ -276,161 +189,39 @@ public class IntQueue implements Iterable<Integer>{
      * @see #removeLast()
      */
     public int last(){
-        if(size == 0){
-            // Underflow
-            throw new NoSuchElementException("Queue is empty.");
-        }
-        final int[] values = this.values;
-        int tail = this.tail;
-        tail--;
-        if(tail == -1){
-            tail = values.length - 1;
-        }
-        return values[tail];
+        checkNotEmpty();
+        return values[lastIndex()];
     }
 
     /**
-     * Retrieves the value in queue without removing it. Indexing is from the front to back, zero based. Therefore get(0) is the
-     * same as {@link #first()}.
+     * Retrieves the value in queue without removing it. Indexing is from the front to back, zero based.
+     * Therefore get(0) is the same as {@link #first()}.
      * @throws IndexOutOfBoundsException when the index is negative or >= size
      */
     public int get(int index){
-        if(index < 0) throw new IndexOutOfBoundsException("index can't be < 0: " + index);
-        if(index >= size) throw new IndexOutOfBoundsException("index can't be >= size: " + index + " >= " + size);
-        final int[] values = this.values;
-
-        int i = head + index;
-        if(i >= values.length){
-            i -= values.length;
-        }
-        return values[i];
+        checkIndex(index);
+        return values[index(index)];
     }
 
     public void set(int index, int value){
-        if(index < 0) throw new IndexOutOfBoundsException("index can't be < 0: " + index);
-        if(index >= size) throw new IndexOutOfBoundsException("index can't be >= size: " + index + " >= " + size);
-        final int[] values = this.values;
-
-        int i = head + index;
-        if(i >= values.length){
-            i -= values.length;
-        }
-        values[i] = value;
+        checkIndex(index);
+        beforeModify();
+        values[index(index)] = value;
     }
 
-    /**Removes all values from this queue; O(1).*/
-    public void clear(){
-        if(size == 0) return;
-        this.head = 0;
-        this.tail = 0;
-        this.size = 0;
+    public int[] toArray(){
+        int[] out = new int[size];
+        copyItems(out, 0);
+        return out;
     }
 
-    @Override
-    public int hashCode(){
-        final int size = this.size;
-        final int[] values = this.values;
-        final int backingLength = values.length;
-        int index = this.head;
 
-        int hash = size + 1;
-        for(int s = 0; s < size; s++){
-            final int value = values[index];
-            hash *= 31;
-            hash += value;
-            index++;
-            if(index == backingLength) index = 0;
-        }
-
-        return hash;
-    }
-
-    @Override
-    public boolean equals(Object o){
-        if(this == o) return true;
-        if(!(o instanceof IntQueue)) return false;
-        IntQueue q = (IntQueue)o;
-        final int size = this.size;
-        if(q.size != size) return false;
-
-        final int[] myValues = this.values;
-        final int myBackingLength = myValues.length;
-        final int[] itsValues = q.values;
-        final int itsBackingLength = itsValues.length;
-
-        int myIndex = head;
-        int itsIndex = q.head;
-        for(int s = 0; s < size; s++){
-            int myValue = myValues[myIndex];
-            int itsValue = itsValues[itsIndex];
-
-            if(myValue != itsValue) return false;
-            myIndex++;
-            itsIndex++;
-            if(myIndex == myBackingLength) myIndex = 0;
-            if(itsIndex == itsBackingLength) itsIndex = 0;
-        }
-        return true;
-    }
-
-    @Override
-    public String toString(){
-        if(size == 0){
-            return "[]";
-        }
-        final int[] values = this.values;
-        final int head = this.head;
-        final int tail = this.tail;
-
-        StringBuilder sb = new StringBuilder(64);
-        sb.append('[');
-        sb.append(values[head]);
-        for(int i = (head + 1) % values.length; i != tail; i = (i + 1) % values.length){
-            sb.append(", ").append(values[i]);
-        }
-        sb.append(']');
-        return sb.toString();
-    }
-
-    /**
-     * Returns an iterator for the items in this queue. Remove is supported. Note that the same iterator instance is returned each
-     * time this method is called. Use the {@link IntQueueIterator} constructor for nested or multithreaded iteration.
-     */
-    @Override
-    public IntQueueIterator iterator(){
-        if(iterator1 == null){
-            iterator1 = new IntQueueIterator(this);
-            iterator2 = new IntQueueIterator(this);
-        }
-        if(!iterator1.valid){
-            iterator1.reset();
-            iterator1.valid = true;
-            iterator2.valid = false;
-            return iterator1;
-        }
-        iterator2.reset();
-        iterator2.valid = true;
-        iterator1.valid = false;
-        return iterator2;
-    }
-
-    public static class IntQueueIterator implements Iterable<Integer>, Iterator<Integer>{
-        private final IntQueue queue;
-        int index;
-        boolean valid = true;
+    public static class IntQueueIterator extends QueueIterator<Integer>{
+        protected final IntQueue queue;
 
         public IntQueueIterator(IntQueue queue){
+            super(queue);
             this.queue = queue;
-        }
-
-        public void reset(){
-            index = 0;
-        }
-
-        @Override
-        public boolean hasNext(){
-            if(!valid) throw new ArcRuntimeException("#iterator() cannot be used nested.");
-            return index < queue.size;
         }
 
         @Override
@@ -439,20 +230,7 @@ public class IntQueue implements Iterable<Integer>{
         }
 
         public int nextInt(){
-            if(index >= queue.size) throw new NoSuchElementException(String.valueOf(index));
-            if(!valid) throw new ArcRuntimeException("#iterator() cannot be used nested.");
-            return queue.get(index++);
-        }
-
-        @Override
-        public void remove(){
-            index--;
-            queue.removeIndex(index);
-        }
-
-        @Override
-        public Iterator<Integer> iterator(){
-            return this;
+            return queue.get(advance());
         }
     }
 }

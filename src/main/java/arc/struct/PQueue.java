@@ -11,8 +11,10 @@ public class PQueue<E>{
     private static final float CAPACITY_RATIO_HI = 2f;
 
     /**
-     * Priority queue represented as a balanced binary heap: the two children of queue[n] are queue[2*n+1] and queue[2*(n+1)]. The
-     * priority queue is ordered by the elements' natural ordering: For each node n in the heap and each descendant d of n, n <= d.
+     * Priority queue represented as a balanced binary heap:
+     * the two children of queue[n] are queue[2*n+1] and queue[2*(n+1)].
+     * The priority queue is ordered by the elements' natural ordering:
+     * For each node n in the heap and each descendant d of n, n <= d.
      * The element with the lowest value is in queue[0], assuming the queue is nonempty.
      */
     public Object[] queue;
@@ -47,7 +49,7 @@ public class PQueue<E>{
      * Inserts the specified element into this priority queue.
      * @return true if the element was added to this queue, else false
      * @throws ClassCastException if the specified element cannot be compared with elements currently in this priority queue
-     * according to the priority queue's ordering
+     *                            according to the priority queue's ordering
      * @throws IllegalArgumentException if the specified element is null
      */
     public boolean add(E e){
@@ -106,8 +108,8 @@ public class PQueue<E>{
     }
 
     /**
-     * Inserts item x at position k, maintaining heap invariant by promoting x up the tree until it is greater than or equal to its
-     * parent, or is the root.
+     * Inserts item x at position k, maintaining heap invariant by promoting x up the tree until it is greater
+     * than or equal to its parent, or is the root.
      * @param k the position to fill
      * @param x the item to insert
      */
@@ -123,8 +125,8 @@ public class PQueue<E>{
     }
 
     /**
-     * Inserts item x at position k, maintaining heap invariant by demoting x down the tree repeatedly until it is less than or
-     * equal to its children or is a leaf.
+     * Inserts item x at position k, maintaining heap invariant by demoting x down the tree repeatedly until it is less
+     * than or equal to its children or is a leaf.
      * @param k the position to fill
      * @param x the item to insert
      */
@@ -155,7 +157,8 @@ public class PQueue<E>{
             throw new ArcRuntimeException("Capacity upper limit exceeded.");
         int oldCapacity = queue.length;
         // Double size if small; else grow by 50%
-        int newCapacity = (int)((oldCapacity < 64) ? ((oldCapacity + 1) * CAPACITY_RATIO_HI) : (oldCapacity * CAPACITY_RATIO_LOW));
+        int newCapacity = (int)((oldCapacity < 64) ? ((oldCapacity + 1) * CAPACITY_RATIO_HI) :
+                          (oldCapacity * CAPACITY_RATIO_LOW));
         if(newCapacity < 0) // overflow
             newCapacity = Integer.MAX_VALUE;
         if(newCapacity < minCapacity) newCapacity = minCapacity;

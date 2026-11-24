@@ -1,12 +1,12 @@
 package arc.struct;
 
-import java.util.Comparator;
-
 /**
- * Guarantees that array entries provided by {@link #begin()} between indexes 0 and {@link #size} at the time begin was called
- * will not be modified until {@link #end()} is called. If modification of the SnapshotArray occurs between begin/end, the backing
- * array is copied prior to the modification, ensuring that the backing array that was returned by {@link #begin()} is unaffected.
- * To avoid allocation, an attempt is made to reuse any extra array created as a result of this copy on subsequent copies.
+ * Guarantees that array entries provided by {@link #begin()} between indexes 0 and {@link #size}
+ * at the time begin was called will not be modified until {@link #end()} is called.
+ * If modification of the SnapshotArray occurs between begin/end, the backing array is copied prior
+ * to the modification, ensuring that the backing array that was returned by {@link #begin()} is unaffected.
+ * To avoid allocation, an attempt is made to reuse any extra array created as a result of this copy
+ * on subsequent copies.
  * <p>
  * It is suggested iteration be done in this specific way:
  *
@@ -22,7 +22,6 @@ import java.util.Comparator;
  * </pre>
  * @author Nathan Sweet
  */
-@SuppressWarnings("unchecked")
 public class SnapshotSeq<T> extends Seq<T>{
     private T[] snapshot, recycled;
     private int snapshots;
@@ -59,13 +58,14 @@ public class SnapshotSeq<T> extends Seq<T>{
     }
 
     /** @see #SnapshotSeq(Object[]) */
+    @SafeVarargs
     public static <T> SnapshotSeq<T> with(T... array){
         return new SnapshotSeq<>(array);
     }
 
     /** Returns the backing array, which is guaranteed to not be modified before {@link #end()}. */
     public T[] begin(){
-        modified();
+        beforeModify();
         snapshot = items;
         snapshots++;
         return items;
@@ -84,7 +84,8 @@ public class SnapshotSeq<T> extends Seq<T>{
         snapshot = null;
     }
 
-    private void modified(){
+    @Override
+    protected void beforeModify(){
         if(snapshot == null || snapshot != items) return;
         // Snapshot is in use, copy backing array to recycled array or create new backing array.
         if(recycled != null && recycled.length >= size){
@@ -93,102 +94,5 @@ public class SnapshotSeq<T> extends Seq<T>{
             recycled = null;
         }else
             resize(items.length);
-    }
-
-    @Override
-    public void set(int index, T value){
-        modified();
-        super.set(index, value);
-    }
-
-    @Override
-    public void insert(int index, T value){
-        modified();
-        super.insert(index, value);
-    }
-
-    @Override
-    public void swap(int first, int second){
-        modified();
-        super.swap(first, second);
-    }
-
-    @Override
-    public boolean remove(T value, boolean identity){
-        modified();
-        return super.remove(value, identity);
-    }
-
-    @Override
-    public T remove(int index){
-        modified();
-        return super.remove(index);
-    }
-
-    @Override
-    public void removeRange(int start, int end){
-        modified();
-        super.removeRange(start, end);
-    }
-
-    @Override
-    public boolean removeAll(Seq<? extends T> array, boolean identity){
-        modified();
-        return super.removeAll(array, identity);
-    }
-
-    @Override
-    public Seq<T> removeAll(arc.func.Boolf<T> pred){
-        modified();
-        return super.removeAll(pred);
-    }
-
-    @Override
-    public T pop(){
-        modified();
-        return super.pop();
-    }
-
-    @Override
-    public Seq<T> clear(){
-        modified();
-        super.clear();
-        return this;
-    }
-
-    @Override
-    public Seq<T> sort(){
-        modified();
-        return super.sort();
-    }
-
-    @Override
-    public Seq<T> sort(Comparator<? super T> comparator){
-        modified();
-        return super.sort(comparator);
-    }
-
-    @Override
-    public Seq<T> reverse(){
-        modified();
-        return super.reverse();
-    }
-
-    @Override
-    public Seq<T> shuffle(){
-        modified();
-        return super.shuffle();
-    }
-
-    @Override
-    public void truncate(int newSize){
-        modified();
-        super.truncate(newSize);
-    }
-
-    @Override
-    public T[] setSize(int newSize){
-        modified();
-        return super.setSize(newSize);
     }
 }

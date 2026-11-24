@@ -1,18 +1,17 @@
 package arc.struct;
 
-import java.util.Comparator;
+import arc.func.Boolf;
 
 /**
- * Queues any removals done after {@link #begin()} is called to occur once {@link #end()} is called. This can allow code out of
- * your control to remove items without affecting iteration. Between begin and end, most mutator methods will throw
- * IllegalStateException. Only {@link #remove(int)}, {@link #remove(Object, boolean)}, {@link #removeRange(int, int)},
- * {@link #clear()}, and add methods are allowed.
+ * Queues any removals done after {@link #begin()} is called to occur once {@link #end()} is called.
+ * This can allow code out of your control to remove items without affecting iteration.
+ * Between begin and end, most mutator methods will throw IllegalStateException. Only {@link #remove(int)},
+ * {@link #remove(Object, boolean)}, {@link #removeRange(int, int)}, {@link #clear()}, and add methods are allowed.
  * <p>
- * Code using this class must not rely on items being removed immediately. Consider using {@link SnapshotSeq} if this is a
- * problem.
+ * Code using this class must not rely on items being removed immediately.
+ * Consider using {@link SnapshotSeq} if this is a problem.
  * @author Nathan Sweet
  */
-@SuppressWarnings("unchecked")
 public class DelayedRemovalSeq<T> extends Seq<T>{
     private int iterating;
     private final IntSeq remove = new IntSeq(0);
@@ -50,6 +49,7 @@ public class DelayedRemovalSeq<T> extends Seq<T>{
     }
 
     /** @see #DelayedRemovalSeq(Object[]) */
+    @SafeVarargs
     public static <T> DelayedRemovalSeq<T> with(T... array){
         return new DelayedRemovalSeq<>(array);
     }
@@ -91,17 +91,6 @@ public class DelayedRemovalSeq<T> extends Seq<T>{
     }
 
     @Override
-    public boolean remove(T value, boolean identity){
-        if(iterating > 0){
-            int index = indexOf(value, identity);
-            if(index == -1) return false;
-            removeIntern(index);
-            return true;
-        }
-        return super.remove(value, identity);
-    }
-
-    @Override
     public T remove(int index){
         if(iterating > 0){
             removeIntern(index);
@@ -111,7 +100,17 @@ public class DelayedRemovalSeq<T> extends Seq<T>{
     }
 
     @Override
-    public Seq<T> removeAll(arc.func.Boolf<T> pred){
+    protected void removeItem(int index){
+        if(iterating > 0){
+            checkIndex(index);
+            removeIntern(index);
+        }else{
+            super.removeItem(index);
+        }
+    }
+
+    @Override
+    public Seq<T> removeAll(Boolf<T> pred){
         if(iterating > 0){
             for(int i = 0; i < size; i++){
                 if(pred.get(items[i])) removeIntern(i);
@@ -139,63 +138,13 @@ public class DelayedRemovalSeq<T> extends Seq<T>{
         return super.clear();
     }
 
-    @Override
-    public void set(int index, T value){
+    public void check(){
         if(iterating > 0) throw new IllegalStateException("Invalid between begin/end.");
-        super.set(index, value);
     }
 
+    /** Refuses the changes between begin and end. */
     @Override
-    public void insert(int index, T value){
-        if(iterating > 0) throw new IllegalStateException("Invalid between begin/end.");
-        super.insert(index, value);
-    }
-
-    @Override
-    public void swap(int first, int second){
-        if(iterating > 0) throw new IllegalStateException("Invalid between begin/end.");
-        super.swap(first, second);
-    }
-
-    @Override
-    public T pop(){
-        if(iterating > 0) throw new IllegalStateException("Invalid between begin/end.");
-        return super.pop();
-    }
-
-    @Override
-    public Seq<T> sort(){
-        if(iterating > 0) throw new IllegalStateException("Invalid between begin/end.");
-        return super.sort();
-    }
-
-    @Override
-    public Seq<T> sort(Comparator<? super T> comparator){
-        if(iterating > 0) throw new IllegalStateException("Invalid between begin/end.");
-        return super.sort(comparator);
-    }
-
-    @Override
-    public Seq<T> reverse(){
-        if(iterating > 0) throw new IllegalStateException("Invalid between begin/end.");
-        return super.reverse();
-    }
-
-    @Override
-    public Seq<T> shuffle(){
-        if(iterating > 0) throw new IllegalStateException("Invalid between begin/end.");
-        return super.shuffle();
-    }
-
-    @Override
-    public void truncate(int newSize){
-        if(iterating > 0) throw new IllegalStateException("Invalid between begin/end.");
-        super.truncate(newSize);
-    }
-
-    @Override
-    public T[] setSize(int newSize){
-        if(iterating > 0) throw new IllegalStateException("Invalid between begin/end.");
-        return super.setSize(newSize);
+    protected void beforeModify(){
+        check();
     }
 }

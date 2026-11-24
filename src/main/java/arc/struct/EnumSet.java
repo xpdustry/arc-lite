@@ -1,5 +1,7 @@
 package arc.struct;
 
+import arc.util.*;
+
 /** Tiny array wrapper with a mask int for fast contains() checks. */
 public class EnumSet<T extends Enum<T>>{
     protected int mask;
@@ -26,10 +28,9 @@ public class EnumSet<T extends Enum<T>>{
     }
 
     /** @return a new set with the specified enum, or itself if this flag is already present. */
-    @SuppressWarnings("unchecked")
     public EnumSet<T> with(T add){
         if(!contains(add)){
-            T[] copy = (T[])java.lang.reflect.Array.newInstance(array.getClass().getComponentType(), array.length + 1);
+            T[] copy = Reflect.newArray(array, array.length + 1);
             System.arraycopy(array, 0, copy, 0, array.length);
             copy[copy.length - 1] = add;
             return of(copy);

@@ -121,33 +121,23 @@ public class BinaryHeap<T extends BinaryHeap.Node>{
             if(leftIndex >= size) break;
             int rightIndex = leftIndex + 1;
 
-            // Always have a left child.
-            Node leftNode = nodes[leftIndex];
-            float leftValue = leftNode.value;
-
-            // May have a right child.
-            Node rightNode;
-            float rightValue;
-            if(rightIndex >= size){
-                rightNode = null;
-                rightValue = isMaxHeap ? Float.MIN_VALUE : Float.MAX_VALUE;
-            }else{
-                rightNode = nodes[rightIndex];
-                rightValue = rightNode.value;
+            int childIndex = leftIndex;
+            Node child = nodes[leftIndex];
+            float childValue = child.value;
+            if(rightIndex < size){
+                Node rightNode = nodes[rightIndex];
+                float rightValue = rightNode.value;
+                if(!(childValue < rightValue ^ isMaxHeap)){
+                    childIndex = rightIndex;
+                    child = rightNode;
+                    childValue = rightValue;
+                }
             }
 
-            // The smallest of the three values is the parent.
-            if(leftValue < rightValue ^ isMaxHeap){
-                if(leftValue == value || (leftValue > value ^ isMaxHeap)) break;
-                nodes[index] = leftNode;
-                leftNode.index = index;
-                index = leftIndex;
-            }else{
-                if(rightValue == value || (rightValue > value ^ isMaxHeap)) break;
-                nodes[index] = rightNode;
-                rightNode.index = index;
-                index = rightIndex;
-            }
+            if(childValue == value || (childValue > value ^ isMaxHeap)) break;
+            nodes[index] = child;
+            child.index = index;
+            index = childIndex;
         }
 
         nodes[index] = node;

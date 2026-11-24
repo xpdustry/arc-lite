@@ -3,23 +3,17 @@ package arc.struct;
 import arc.func.LongBoolf;
 import arc.func.Longc;
 import arc.math.Mathf;
-import arc.util.ArcRuntimeException;
 
 import java.util.Arrays;
-import java.util.Iterator;
-import java.util.NoSuchElementException;
 
 /**
- * A resizable, ordered or unordered long array. Avoids the boxing that occurs with ArrayList<Long>. If unordered, this class
- * avoids a memory copy when removing elements (the last element is moved to the removed element's position).
+ * A resizable, ordered or unordered long array. Avoids the boxing that occurs with ArrayList<Long>.
+ * If unordered, this class avoids a memory copy when removing elements
+ * (the last element is moved to the removed element's position).
  * @author Nathan Sweet
  */
-public class LongSeq implements Iterable<Long>{
+public class LongSeq extends BaseSeq<LongSeq.LongSeqIterator, LongSeq> implements Iterable<Long>{
     public long[] items;
-    public int size;
-    public boolean ordered;
-
-    private LongSeqIterator iterator1, iterator2;
 
     /** Creates an ordered array with a capacity of 16. */
     public LongSeq(){
@@ -32,8 +26,8 @@ public class LongSeq implements Iterable<Long>{
     }
 
     /**
-     * @param ordered If false, methods that remove elements may change the order of other elements in the array, which avoids a
-     * memory copy.
+     * @param ordered If false, methods that remove elements may change the order of other elements in the array,
+     *                which avoids a memory copy.
      * @param capacity Any elements added beyond this will cause the backing array to be grown.
      */
     public LongSeq(boolean ordered, int capacity){
@@ -42,35 +36,35 @@ public class LongSeq implements Iterable<Long>{
     }
 
     /**
-     * Creates a new array containing the elements in the specific array. The new array will be ordered if the specific array is
-     * ordered. The capacity is set to the number of elements, so any subsequent elements added will cause the backing array to be
-     * grown.
+     * Creates a new array containing the elements in the specific array.
+     * The new array will be ordered if the specific array is ordered.
+     * The capacity is set to the number of elements, so any subsequent elements added will cause
+     * the backing array to be grown.
      */
     public LongSeq(LongSeq array){
-        this.ordered = array.ordered;
-        size = array.size;
-        items = new long[size];
-        System.arraycopy(array.items, 0, items, 0, size);
+        this(array.ordered, array.size);
+        addAll(array);
     }
 
     /**
-     * Creates a new ordered array containing the elements in the specified array. The capacity is set to the number of elements,
-     * so any subsequent elements added will cause the backing array to be grown.
+     * Creates a new ordered array containing the elements in the specified array.
+     * The capacity is set to the number of elements, so any subsequent elements added will cause
+     * the backing array to be grown.
      */
     public LongSeq(long[] array){
         this(true, array, 0, array.length);
     }
 
     /**
-     * Creates a new array containing the elements in the specified array. The capacity is set to the number of elements, so any
-     * subsequent elements added will cause the backing array to be grown.
-     * @param ordered If false, methods that remove elements may change the order of other elements in the array, which avoids a
-     * memory copy.
+     * Creates a new array containing the elements in the specified array.
+     * The capacity is set to the number of elements, so any subsequent elements added will cause
+     * the backing array to be grown.
+     * @param ordered If false, methods that remove elements may change the order of other elements in the array,
+     *                which avoids a memory copy.
      */
     public LongSeq(boolean ordered, long[] array, int startIndex, int count){
         this(ordered, count);
-        size = count;
-        System.arraycopy(array, startIndex, items, 0, count);
+        addItems(array, startIndex, count);
     }
 
     /** @see #LongSeq(long[]) */
@@ -111,6 +105,7 @@ public class LongSeq implements Iterable<Long>{
 
     /** Removes the items matching the predicate, keeping the order. */
     public LongSeq removeAll(LongBoolf pred){
+        beforeModify();
         long[] items = this.items;
         int kept = 0;
         for(int i = 0; i < size; i++){
@@ -121,22 +116,19 @@ public class LongSeq implements Iterable<Long>{
     }
 
     public void add(long value){
-        long[] items = this.items;
-        if(size == items.length) items = resize(Math.max(8, (int)(size * 1.75f)));
+        grow(1);
         items[size++] = value;
     }
 
     public void add(long value1, long value2){
-        long[] items = this.items;
-        if(size + 1 >= items.length) items = resize(Math.max(8, (int)(size * 1.75f)));
+        grow(2);
         items[size] = value1;
         items[size + 1] = value2;
         size += 2;
     }
 
     public void add(long value1, long value2, long value3){
-        long[] items = this.items;
-        if(size + 2 >= items.length) items = resize(Math.max(8, (int)(size * 1.75f)));
+        grow(3);
         items[size] = value1;
         items[size + 1] = value2;
         items[size + 2] = value3;
@@ -144,8 +136,7 @@ public class LongSeq implements Iterable<Long>{
     }
 
     public void add(long value1, long value2, long value3, long value4){
-        long[] items = this.items;
-        if(size + 3 >= items.length) items = resize(Math.max(8, (int)(size * 1.8f))); // 1.75 isn't enough when size=5.
+        grow(4);
         items[size] = value1;
         items[size + 1] = value2;
         items[size + 2] = value3;
@@ -153,75 +144,45 @@ public class LongSeq implements Iterable<Long>{
         size += 4;
     }
 
-    public void addAll(LongSeq array){
-        addAll(array.items, 0, array.size);
-    }
-
-    public void addAll(LongSeq array, int offset, int length){
-        if(offset + length > array.size)
-            throw new IllegalArgumentException("offset + length must be <= size: " + offset + " + " + length + " <= " + array.size);
-        addAll(array.items, offset, length);
-    }
-
     public void addAll(long... array){
         addAll(array, 0, array.length);
     }
 
     public void addAll(long[] array, int offset, int length){
-        long[] items = this.items;
-        int sizeNeeded = size + length;
-        if(sizeNeeded > items.length) items = resize(Math.max(8, (int)(sizeNeeded * 1.75f)));
-        System.arraycopy(array, offset, items, size, length);
-        size += length;
+        addItems(array, offset, length);
     }
 
     public long get(int index){
-        if(index >= size) throw new IndexOutOfBoundsException("index can't be >= size: " + index + " >= " + size);
+        checkIndex(index);
         return items[index];
     }
 
     public void set(int index, long value){
-        if(index >= size) throw new IndexOutOfBoundsException("index can't be >= size: " + index + " >= " + size);
+        checkIndex(index);
+        beforeModify();
         items[index] = value;
     }
 
     public void incr(int index, long value){
-        if(index >= size) throw new IndexOutOfBoundsException("index can't be >= size: " + index + " >= " + size);
+        checkIndex(index);
+        beforeModify();
         items[index] += value;
     }
 
     public void mul(int index, long value){
-        if(index >= size) throw new IndexOutOfBoundsException("index can't be >= size: " + index + " >= " + size);
+        checkIndex(index);
+        beforeModify();
         items[index] *= value;
     }
 
     public void insert(int index, long value){
-        if(index > size) throw new IndexOutOfBoundsException("index can't be > size: " + index + " > " + size);
-        long[] items = this.items;
-        if(size == items.length) items = resize(Math.max(8, (int)(size * 1.75f)));
-        if(ordered)
-            System.arraycopy(items, index, items, index + 1, size - index);
-        else
-            items[size] = items[index];
-        size++;
+        checkInsert(index);
+        insertAt(index);
         items[index] = value;
     }
 
-    public void swap(int first, int second){
-        if(first >= size) throw new IndexOutOfBoundsException("first can't be >= size: " + first + " >= " + size);
-        if(second >= size) throw new IndexOutOfBoundsException("second can't be >= size: " + second + " >= " + size);
-        long[] items = this.items;
-        long firstValue = items[first];
-        items[first] = items[second];
-        items[second] = firstValue;
-    }
-
     public boolean contains(long value){
-        int i = size - 1;
-        long[] items = this.items;
-        while(i >= 0)
-            if(items[i--] == value) return true;
-        return false;
+        return indexOf(value) != -1;
     }
 
     public int indexOf(long value){
@@ -238,75 +199,30 @@ public class LongSeq implements Iterable<Long>{
         return -1;
     }
 
-    /** @deprecated use {@link #lastIndexOf(long)} */
+    /** @deprecated Use {@link #lastIndexOf(long)}. */
     @Deprecated
     public int lastIndexOf(char value){
         return lastIndexOf((long)value);
     }
 
     public boolean removeValue(long value){
-        long[] items = this.items;
-        for(int i = 0, n = size; i < n; i++){
-            if(items[i] == value){
-                removeIndex(i);
-                return true;
-            }
-        }
-        return false;
+        int index = indexOf(value);
+        if(index == -1) return false;
+        removeIndex(index);
+        return true;
     }
 
     /** Removes and returns the item at the specified index. */
     public long removeIndex(int index){
-        if(index >= size) throw new IndexOutOfBoundsException("index can't be >= size: " + index + " >= " + size);
-        long[] items = this.items;
+        checkIndex(index);
         long value = items[index];
-        size--;
-        if(ordered)
-            System.arraycopy(items, index + 1, items, index, size - index);
-        else
-            items[index] = items[size];
+        removeAt(index);
         return value;
-    }
-
-    /** Removes the items between the specified indices, inclusive. */
-    public void removeRange(int start, int end){
-        if(end >= size) throw new IndexOutOfBoundsException("end can't be >= size: " + end + " >= " + size);
-        if(start > end) throw new IndexOutOfBoundsException("start can't be > end: " + start + " > " + end);
-        long[] items = this.items;
-        int count = end - start + 1;
-        if(ordered)
-            System.arraycopy(items, start + count, items, start, size - (start + count));
-        else{
-            int lastIndex = this.size - 1;
-            for(int i = 0; i < count; i++)
-                items[start + i] = items[lastIndex - i];
-        }
-        size -= count;
-    }
-
-    /**
-     * Removes from this array all of elements contained in the specified array.
-     * @return true if this array was modified.
-     */
-    public boolean removeAll(LongSeq array){
-        int size = this.size;
-        int startSize = size;
-        long[] items = this.items;
-        for(int i = 0, n = array.size; i < n; i++){
-            long item = array.get(i);
-            for(int ii = 0; ii < size; ii++){
-                if(item == items[ii]){
-                    removeIndex(ii);
-                    size--;
-                    break;
-                }
-            }
-        }
-        return size != startSize;
     }
 
     /** Removes and returns the last item. */
     public long pop(){
+        beforeModify();
         return items[--size];
     }
 
@@ -317,22 +233,26 @@ public class LongSeq implements Iterable<Long>{
 
     /** Returns the first item. */
     public long first(){
-        if(size == 0) throw new IllegalStateException("Array is empty.");
+        checkNotEmpty();
         return items[0];
     }
 
-    /** Returns true if the array is empty. */
-    public boolean isEmpty(){
-        return size == 0;
+    /** Returns the smallest item. */
+    public long min(){
+        checkNotEmpty();
+        return items[minIndex()];
     }
 
-    public void clear(){
-        size = 0;
+    /** Returns the largest item. */
+    public long max(){
+        checkNotEmpty();
+        return items[maxIndex()];
     }
 
     /**
-     * Reduces the size of the backing array to the size of the actual items. This is useful to release memory when many items
-     * have been removed, or if it is known that more items will not be added.
+     * Reduces the size of the backing array to the size of the actual items.
+     * This is useful to release memory when many items have been removed,
+     * or if it is known that more items will not be added.
      * @return {@link #items}
      */
     public long[] shrink(){
@@ -341,15 +261,12 @@ public class LongSeq implements Iterable<Long>{
     }
 
     /**
-     * Increases the size of the backing array to accommodate the specified number of additional items. Useful before adding many
-     * items to avoid multiple backing array resizes.
+     * Increases the size of the backing array to accommodate the specified number of additional items.
+     * Useful before adding many items to avoid multiple backing array resizes.
      * @return {@link #items}
      */
     public long[] ensureCapacity(int additionalCapacity){
-        if(additionalCapacity < 0)
-            throw new IllegalArgumentException("additionalCapacity must be >= 0: " + additionalCapacity);
-        int sizeNeeded = size + additionalCapacity;
-        if(sizeNeeded > items.length) resize(Math.max(8, sizeNeeded));
+        reserve(additionalCapacity);
         return items;
     }
 
@@ -358,50 +275,79 @@ public class LongSeq implements Iterable<Long>{
      * @return {@link #items}
      */
     public long[] setSize(int newSize){
-        if(newSize < 0) throw new IllegalArgumentException("newSize must be >= 0: " + newSize);
-        if(newSize > items.length) resize(Math.max(8, newSize));
-        size = newSize;
+        applySize(newSize);
         return items;
     }
 
-    protected long[] resize(int newSize){
+    @Override
+    protected Object items(){
+        return items;
+    }
+
+    @Override
+    public int capacity(){
+        return items.length;
+    }
+
+    @Override
+    protected void resize(int newSize){
         long[] newItems = new long[newSize];
         long[] items = this.items;
         System.arraycopy(items, 0, newItems, 0, Math.min(size, newItems.length));
         this.items = newItems;
-        return newItems;
     }
 
-    public void sort(){
-        Arrays.sort(items, 0, size);
+    @Override
+    protected LongSeq create(int capacity){
+        return new LongSeq(ordered, capacity);
     }
 
-    public void reverse(){
+    @Override
+    protected boolean sameType(Object other){
+        return other instanceof LongSeq;
+    }
+
+    @Override
+    public LongSeqIterator newIterator(){
+        return new LongSeqIterator(this);
+    }
+
+    @Override
+    protected void swapItems(int first, int second){
         long[] items = this.items;
-        for(int i = 0, lastIndex = size - 1, n = size / 2; i < n; i++){
-            int ii = lastIndex - i;
-            long temp = items[i];
-            items[i] = items[ii];
-            items[ii] = temp;
-        }
+        long value = items[first];
+        items[first] = items[second];
+        items[second] = value;
     }
 
-    public void shuffle(){
-        long[] items = this.items;
-        for(int i = size - 1; i >= 0; i--){
-            int ii = Mathf.random(i);
-            long temp = items[i];
-            items[i] = items[ii];
-            items[ii] = temp;
-        }
+    @Override
+    protected int compareItems(int first, int second){
+        return Long.compare(items[first], items[second]);
     }
 
-    /**
-     * Reduces the size of the array to the specified size. If the array is already smaller than the specified size, no action is
-     * taken.
-     */
-    public void truncate(int newSize){
-        if(size > newSize) size = newSize;
+    @Override
+    protected void sortItems(int from, int to){
+        Arrays.sort(items, from, to);
+    }
+
+    @Override
+    protected void freeItems(int from, int to){
+    }
+
+    @Override
+    protected boolean equalItem(LongSeq other, int otherIndex, int index){
+        return items[index] == other.items[otherIndex];
+    }
+
+    @Override
+    protected void appendItem(StringBuilder buffer, int index){
+        buffer.append(items[index]);
+    }
+
+    @Override
+    protected int hashItem(int index){
+        long item = items[index];
+        return (int)(item ^ item >>> 32);
     }
 
     /** Returns a random item from the array, or zero if the array is empty. */
@@ -411,103 +357,16 @@ public class LongSeq implements Iterable<Long>{
     }
 
     public long[] toArray(){
-        long[] array = new long[size];
-        System.arraycopy(items, 0, array, 0, size);
-        return array;
+        return Arrays.copyOf(items, size);
     }
 
-    @Override
-    public int hashCode(){
-        if(!ordered) return super.hashCode();
-        long[] items = this.items;
-        int h = 1;
-        for(int i = 0, n = size; i < n; i++)
-            h = h * 31 + (int)(items[i] ^ (items[i] >>> 32));
-        return h;
-    }
 
-    @Override
-    public boolean equals(Object object){
-        if(object == this) return true;
-        if(!ordered) return false;
-        if(!(object instanceof LongSeq)) return false;
-        LongSeq array = (LongSeq)object;
-        if(!array.ordered) return false;
-        int n = size;
-        if(n != array.size) return false;
-        long[] items1 = this.items;
-        long[] items2 = array.items;
-        for(int i = 0; i < n; i++)
-            if(items1[i] != items2[i]) return false;
-        return true;
-    }
-
-    @Override
-    public String toString(){
-        if(size == 0) return "[]";
-        long[] items = this.items;
-        StringBuilder buffer = new StringBuilder(32);
-        buffer.append('[');
-        buffer.append(items[0]);
-        for(int i = 1; i < size; i++){
-            buffer.append(", ");
-            buffer.append(items[i]);
-        }
-        buffer.append(']');
-        return buffer.toString();
-    }
-
-    public String toString(String separator){
-        if(size == 0) return "";
-        long[] items = this.items;
-        StringBuilder buffer = new StringBuilder(32);
-        buffer.append(items[0]);
-        for(int i = 1; i < size; i++){
-            buffer.append(separator);
-            buffer.append(items[i]);
-        }
-        return buffer.toString();
-    }
-
-    /**
-     * Returns an iterator for the items in this sequence. Remove is supported. Note that the same iterator instance is returned
-     * each time this method is called. Use the {@link LongSeqIterator} constructor for nested or multithreaded iteration.
-     */
-    @Override
-    public LongSeqIterator iterator(){
-        if(iterator1 == null){
-            iterator1 = new LongSeqIterator(this);
-            iterator2 = new LongSeqIterator(this);
-        }
-        if(!iterator1.valid){
-            iterator1.reset();
-            iterator1.valid = true;
-            iterator2.valid = false;
-            return iterator1;
-        }
-        iterator2.reset();
-        iterator2.valid = true;
-        iterator1.valid = false;
-        return iterator2;
-    }
-
-    public static class LongSeqIterator implements Iterable<Long>, Iterator<Long>{
-        private final LongSeq seq;
-        int index;
-        boolean valid = true;
+    public static class LongSeqIterator extends SeqIterator<Long>{
+        protected final LongSeq seq;
 
         public LongSeqIterator(LongSeq seq){
+            super(seq);
             this.seq = seq;
-        }
-
-        public void reset(){
-            index = 0;
-        }
-
-        @Override
-        public boolean hasNext(){
-            if(!valid) throw new ArcRuntimeException("#iterator() cannot be used nested.");
-            return index < seq.size;
         }
 
         @Override
@@ -516,20 +375,7 @@ public class LongSeq implements Iterable<Long>{
         }
 
         public long nextLong(){
-            if(index >= seq.size) throw new NoSuchElementException(String.valueOf(index));
-            if(!valid) throw new ArcRuntimeException("#iterator() cannot be used nested.");
-            return seq.items[index++];
-        }
-
-        @Override
-        public void remove(){
-            index--;
-            seq.removeIndex(index);
-        }
-
-        @Override
-        public Iterator<Long> iterator(){
-            return this;
+            return seq.items[advance()];
         }
     }
 }

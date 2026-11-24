@@ -3,21 +3,17 @@ package arc.struct;
 import arc.func.Floatc;
 import arc.math.Mathf;
 import arc.math.geom.Vec2;
-import arc.util.ArcRuntimeException;
 
 import java.util.*;
 
 /**
- * A resizable, ordered or unordered float array. Avoids the boxing that occurs with ArrayList<Float>. If unordered, this class
- * avoids a memory copy when removing elements (the last element is moved to the removed element's position).
+ * A resizable, ordered or unordered float array. Avoids the boxing that occurs with ArrayList<Float>.
+ * If unordered, this class avoids a memory copy when removing elements
+ * (the last element is moved to the removed element's position).
  * @author Nathan Sweet
  */
-public class FloatSeq implements Iterable<Float>{
+public class FloatSeq extends BaseSeq<FloatSeq.FloatSeqIterator, FloatSeq> implements Iterable<Float>{
     public float[] items;
-    public int size;
-    public boolean ordered;
-
-    private FloatSeqIterator iterator1, iterator2;
 
     /** Creates an ordered array with a capacity of 16. */
     public FloatSeq(){
@@ -30,8 +26,8 @@ public class FloatSeq implements Iterable<Float>{
     }
 
     /**
-     * @param ordered If false, methods that remove elements may change the order of other elements in the array, which avoids a
-     * memory copy.
+     * @param ordered If false, methods that remove elements may change the order of other elements in the array,
+     *                which avoids a memory copy.
      * @param capacity Any elements added beyond this will cause the backing array to be grown.
      */
     public FloatSeq(boolean ordered, int capacity){
@@ -40,35 +36,35 @@ public class FloatSeq implements Iterable<Float>{
     }
 
     /**
-     * Creates a new array containing the elements in the specific array. The new array will be ordered if the specific array is
-     * ordered. The capacity is set to the number of elements, so any subsequent elements added will cause the backing array to be
-     * grown.
+     * Creates a new array containing the elements in the specific array.
+     * The new array will be ordered if the specific array is ordered.
+     * The capacity is set to the number of elements, so any subsequent elements added will cause
+     * the backing array to be grown.
      */
     public FloatSeq(FloatSeq array){
-        this.ordered = array.ordered;
-        size = array.size;
-        items = new float[size];
-        System.arraycopy(array.items, 0, items, 0, size);
+        this(array.ordered, array.size);
+        addAll(array);
     }
 
     /**
-     * Creates a new ordered array containing the elements in the specified array. The capacity is set to the number of elements,
-     * so any subsequent elements added will cause the backing array to be grown.
+     * Creates a new ordered array containing the elements in the specified array.
+     * The capacity is set to the number of elements, so any subsequent elements added will cause
+     * the backing array to be grown.
      */
     public FloatSeq(float[] array){
         this(true, array, 0, array.length);
     }
 
     /**
-     * Creates a new array containing the elements in the specified array. The capacity is set to the number of elements, so any
-     * subsequent elements added will cause the backing array to be grown.
-     * @param ordered If false, methods that remove elements may change the order of other elements in the array, which avoids a
-     * memory copy.
+     * Creates a new array containing the elements in the specified array.
+     * The capacity is set to the number of elements, so any subsequent elements added will cause
+     * the backing array to be grown.
+     * @param ordered If false, methods that remove elements may change the order of other elements in the array,
+     *                which avoids a memory copy.
      */
     public FloatSeq(boolean ordered, float[] array, int startIndex, int count){
         this(ordered, count);
-        size = count;
-        System.arraycopy(array, startIndex, items, 0, count);
+        addItems(array, startIndex, count);
     }
 
     /** @see #FloatSeq(float[]) */
@@ -92,22 +88,19 @@ public class FloatSeq implements Iterable<Float>{
     }
 
     public void add(float value){
-        float[] items = this.items;
-        if(size == items.length) items = resize(Math.max(8, (int)(size * 1.75f)));
+        grow(1);
         items[size++] = value;
     }
 
     public void add(float value1, float value2){
-        float[] items = this.items;
-        if(size + 1 >= items.length) items = resize(Math.max(8, (int)(size * 1.75f)));
+        grow(2);
         items[size] = value1;
         items[size + 1] = value2;
         size += 2;
     }
 
     public void add(float value1, float value2, float value3){
-        float[] items = this.items;
-        if(size + 2 >= items.length) items = resize(Math.max(8, (int)(size * 1.75f)));
+        grow(3);
         items[size] = value1;
         items[size + 1] = value2;
         items[size + 2] = value3;
@@ -115,8 +108,7 @@ public class FloatSeq implements Iterable<Float>{
     }
 
     public void add(float value1, float value2, float value3, float value4){
-        float[] items = this.items;
-        if(size + 3 >= items.length) items = resize(Math.max(8, (int)(size * 1.8f))); // 1.75 isn't enough when size=5.
+        grow(4);
         items[size] = value1;
         items[size + 1] = value2;
         items[size + 2] = value3;
@@ -124,75 +116,45 @@ public class FloatSeq implements Iterable<Float>{
         size += 4;
     }
 
-    public void addAll(FloatSeq array){
-        addAll(array.items, 0, array.size);
-    }
-
-    public void addAll(FloatSeq array, int offset, int length){
-        if(offset + length > array.size)
-            throw new IllegalArgumentException("offset + length must be <= size: " + offset + " + " + length + " <= " + array.size);
-        addAll(array.items, offset, length);
-    }
-
     public void addAll(float... array){
         addAll(array, 0, array.length);
     }
 
     public void addAll(float[] array, int offset, int length){
-        float[] items = this.items;
-        int sizeNeeded = size + length;
-        if(sizeNeeded > items.length) items = resize(Math.max(8, (int)(sizeNeeded * 1.75f)));
-        System.arraycopy(array, offset, items, size, length);
-        size += length;
+        addItems(array, offset, length);
     }
 
     public float get(int index){
-        if(index >= size) throw new IndexOutOfBoundsException("index can't be >= size: " + index + " >= " + size);
+        checkIndex(index);
         return items[index];
     }
 
     public void set(int index, float value){
-        if(index >= size) throw new IndexOutOfBoundsException("index can't be >= size: " + index + " >= " + size);
+        checkIndex(index);
+        beforeModify();
         items[index] = value;
     }
 
     public void incr(int index, float value){
-        if(index >= size) throw new IndexOutOfBoundsException("index can't be >= size: " + index + " >= " + size);
+        checkIndex(index);
+        beforeModify();
         items[index] += value;
     }
 
     public void mul(int index, float value){
-        if(index >= size) throw new IndexOutOfBoundsException("index can't be >= size: " + index + " >= " + size);
+        checkIndex(index);
+        beforeModify();
         items[index] *= value;
     }
 
     public void insert(int index, float value){
-        if(index > size) throw new IndexOutOfBoundsException("index can't be > size: " + index + " > " + size);
-        float[] items = this.items;
-        if(size == items.length) items = resize(Math.max(8, (int)(size * 1.75f)));
-        if(ordered)
-            System.arraycopy(items, index, items, index + 1, size - index);
-        else
-            items[size] = items[index];
-        size++;
+        checkInsert(index);
+        insertAt(index);
         items[index] = value;
     }
 
-    public void swap(int first, int second){
-        if(first >= size) throw new IndexOutOfBoundsException("first can't be >= size: " + first + " >= " + size);
-        if(second >= size) throw new IndexOutOfBoundsException("second can't be >= size: " + second + " >= " + size);
-        float[] items = this.items;
-        float firstValue = items[first];
-        items[first] = items[second];
-        items[second] = firstValue;
-    }
-
     public boolean contains(float value){
-        int i = size - 1;
-        float[] items = this.items;
-        while(i >= 0)
-            if(items[i--] == value) return true;
-        return false;
+        return indexOf(value) != -1;
     }
 
     public int indexOf(float value){
@@ -210,68 +172,23 @@ public class FloatSeq implements Iterable<Float>{
     }
 
     public boolean removeValue(float value){
-        float[] items = this.items;
-        for(int i = 0, n = size; i < n; i++){
-            if(items[i] == value){
-                removeIndex(i);
-                return true;
-            }
-        }
-        return false;
+        int index = indexOf(value);
+        if(index == -1) return false;
+        removeIndex(index);
+        return true;
     }
 
     /** Removes and returns the item at the specified index. */
     public float removeIndex(int index){
-        if(index >= size) throw new IndexOutOfBoundsException("index can't be >= size: " + index + " >= " + size);
-        float[] items = this.items;
+        checkIndex(index);
         float value = items[index];
-        size--;
-        if(ordered)
-            System.arraycopy(items, index + 1, items, index, size - index);
-        else
-            items[index] = items[size];
+        removeAt(index);
         return value;
-    }
-
-    /** Removes the items between the specified indices, inclusive. */
-    public void removeRange(int start, int end){
-        if(end >= size) throw new IndexOutOfBoundsException("end can't be >= size: " + end + " >= " + size);
-        if(start > end) throw new IndexOutOfBoundsException("start can't be > end: " + start + " > " + end);
-        float[] items = this.items;
-        int count = end - start + 1;
-        if(ordered)
-            System.arraycopy(items, start + count, items, start, size - (start + count));
-        else{
-            int lastIndex = this.size - 1;
-            for(int i = 0; i < count; i++)
-                items[start + i] = items[lastIndex - i];
-        }
-        size -= count;
-    }
-
-    /**
-     * Removes from this array all of elements contained in the specified array.
-     * @return true if this array was modified.
-     */
-    public boolean removeAll(FloatSeq array){
-        int size = this.size;
-        int startSize = size;
-        float[] items = this.items;
-        for(int i = 0, n = array.size; i < n; i++){
-            float item = array.get(i);
-            for(int ii = 0; ii < size; ii++){
-                if(item == items[ii]){
-                    removeIndex(ii);
-                    size--;
-                    break;
-                }
-            }
-        }
-        return size != startSize;
     }
 
     /** Removes and returns the last item. */
     public float pop(){
+        beforeModify();
         return items[--size];
     }
 
@@ -282,17 +199,20 @@ public class FloatSeq implements Iterable<Float>{
 
     /** Returns the first item. */
     public float first(){
-        if(size == 0) throw new IllegalStateException("Array is empty.");
+        checkNotEmpty();
         return items[0];
     }
 
-    /** Returns true if the array is empty. */
-    public boolean isEmpty(){
-        return size == 0;
+    /** Returns the smallest item. */
+    public float min(){
+        checkNotEmpty();
+        return items[minIndex()];
     }
 
-    public void clear(){
-        size = 0;
+    /** Returns the largest item. */
+    public float max(){
+        checkNotEmpty();
+        return items[maxIndex()];
     }
 
     public float sum(){
@@ -304,8 +224,9 @@ public class FloatSeq implements Iterable<Float>{
     }
 
     /**
-     * Reduces the size of the backing array to the size of the actual items. This is useful to release memory when many items
-     * have been removed, or if it is known that more items will not be added.
+     * Reduces the size of the backing array to the size of the actual items.
+     * This is useful to release memory when many items have been removed,
+     * or if it is known that more items will not be added.
      * @return {@link #items}
      */
     public float[] shrink(){
@@ -314,15 +235,12 @@ public class FloatSeq implements Iterable<Float>{
     }
 
     /**
-     * Increases the size of the backing array to accommodate the specified number of additional items. Useful before adding many
-     * items to avoid multiple backing array resizes.
+     * Increases the size of the backing array to accommodate the specified number of additional items.
+     * Useful before adding many items to avoid multiple backing array resizes.
      * @return {@link #items}
      */
     public float[] ensureCapacity(int additionalCapacity){
-        if(additionalCapacity < 0)
-            throw new IllegalArgumentException("additionalCapacity must be >= 0: " + additionalCapacity);
-        int sizeNeeded = size + additionalCapacity;
-        if(sizeNeeded > items.length) resize(Math.max(8, sizeNeeded));
+        reserve(additionalCapacity);
         return items;
     }
 
@@ -331,50 +249,78 @@ public class FloatSeq implements Iterable<Float>{
      * @return {@link #items}
      */
     public float[] setSize(int newSize){
-        if(newSize < 0) throw new IllegalArgumentException("newSize must be >= 0: " + newSize);
-        if(newSize > items.length) resize(Math.max(8, newSize));
-        size = newSize;
+        applySize(newSize);
         return items;
     }
 
-    protected float[] resize(int newSize){
+    @Override
+    protected Object items(){
+        return items;
+    }
+
+    @Override
+    public int capacity(){
+        return items.length;
+    }
+
+    @Override
+    protected void resize(int newSize){
         float[] newItems = new float[newSize];
         float[] items = this.items;
         System.arraycopy(items, 0, newItems, 0, Math.min(size, newItems.length));
         this.items = newItems;
-        return newItems;
     }
 
-    public void sort(){
-        Arrays.sort(items, 0, size);
+    @Override
+    protected FloatSeq create(int capacity){
+        return new FloatSeq(ordered, capacity);
     }
 
-    public void reverse(){
+    @Override
+    protected boolean sameType(Object other){
+        return other instanceof FloatSeq;
+    }
+
+    @Override
+    public FloatSeqIterator newIterator(){
+        return new FloatSeqIterator(this);
+    }
+
+    @Override
+    protected void swapItems(int first, int second){
         float[] items = this.items;
-        for(int i = 0, lastIndex = size - 1, n = size / 2; i < n; i++){
-            int ii = lastIndex - i;
-            float temp = items[i];
-            items[i] = items[ii];
-            items[ii] = temp;
-        }
+        float value = items[first];
+        items[first] = items[second];
+        items[second] = value;
     }
 
-    public void shuffle(){
-        float[] items = this.items;
-        for(int i = size - 1; i >= 0; i--){
-            int ii = Mathf.random(i);
-            float temp = items[i];
-            items[i] = items[ii];
-            items[ii] = temp;
-        }
+    @Override
+    protected int compareItems(int first, int second){
+        return Float.compare(items[first], items[second]);
     }
 
-    /**
-     * Reduces the size of the array to the specified size. If the array is already smaller than the specified size, no action is
-     * taken.
-     */
-    public void truncate(int newSize){
-        if(size > newSize) size = newSize;
+    @Override
+    protected void sortItems(int from, int to){
+        Arrays.sort(items, from, to);
+    }
+
+    @Override
+    protected void freeItems(int from, int to){
+    }
+
+    @Override
+    protected boolean equalItem(FloatSeq other, int otherIndex, int index){
+        return items[index] == other.items[otherIndex];
+    }
+
+    @Override
+    protected void appendItem(StringBuilder buffer, int index){
+        buffer.append(items[index]);
+    }
+
+    @Override
+    protected int hashItem(int index){
+        return Float.floatToIntBits(items[index]);
     }
 
     /** Returns a random item from the array, or zero if the array is empty. */
@@ -384,35 +330,7 @@ public class FloatSeq implements Iterable<Float>{
     }
 
     public float[] toArray(){
-        float[] array = new float[size];
-        System.arraycopy(items, 0, array, 0, size);
-        return array;
-    }
-
-    @Override
-    public int hashCode(){
-        if(!ordered) return super.hashCode();
-        float[] items = this.items;
-        int h = 1;
-        for(int i = 0, n = size; i < n; i++)
-            h = h * 31 + Float.floatToIntBits(items[i]);
-        return h;
-    }
-
-    @Override
-    public boolean equals(Object object){
-        if(object == this) return true;
-        if(!ordered) return false;
-        if(!(object instanceof FloatSeq)) return false;
-        FloatSeq array = (FloatSeq)object;
-        if(!array.ordered) return false;
-        int n = size;
-        if(n != array.size) return false;
-        float[] items1 = this.items;
-        float[] items2 = array.items;
-        for(int i = 0; i < n; i++)
-            if(items1[i] != items2[i]) return false;
-        return true;
+        return Arrays.copyOf(items, size);
     }
 
     public boolean equals(Object object, float epsilon){
@@ -430,72 +348,13 @@ public class FloatSeq implements Iterable<Float>{
         return true;
     }
 
-    @Override
-    public String toString(){
-        if(size == 0) return "[]";
-        float[] items = this.items;
-        StringBuilder buffer = new StringBuilder(32);
-        buffer.append('[');
-        buffer.append(items[0]);
-        for(int i = 1; i < size; i++){
-            buffer.append(", ");
-            buffer.append(items[i]);
-        }
-        buffer.append(']');
-        return buffer.toString();
-    }
 
-    public String toString(String separator){
-        if(size == 0) return "";
-        float[] items = this.items;
-        StringBuilder buffer = new StringBuilder(32);
-        buffer.append(items[0]);
-        for(int i = 1; i < size; i++){
-            buffer.append(separator);
-            buffer.append(items[i]);
-        }
-        return buffer.toString();
-    }
-
-    /**
-     * Returns an iterator for the items in this sequence. Remove is supported. Note that the same iterator instance is returned
-     * each time this method is called. Use the {@link FloatSeqIterator} constructor for nested or multithreaded iteration.
-     */
-    @Override
-    public FloatSeqIterator iterator(){
-        if(iterator1 == null){
-            iterator1 = new FloatSeqIterator(this);
-            iterator2 = new FloatSeqIterator(this);
-        }
-        if(!iterator1.valid){
-            iterator1.reset();
-            iterator1.valid = true;
-            iterator2.valid = false;
-            return iterator1;
-        }
-        iterator2.reset();
-        iterator2.valid = true;
-        iterator1.valid = false;
-        return iterator2;
-    }
-
-    public static class FloatSeqIterator implements Iterable<Float>, Iterator<Float>{
-        private final FloatSeq seq;
-        int index;
-        boolean valid = true;
+    public static class FloatSeqIterator extends SeqIterator<Float>{
+        protected final FloatSeq seq;
 
         public FloatSeqIterator(FloatSeq seq){
+            super(seq);
             this.seq = seq;
-        }
-
-        public void reset(){
-            index = 0;
-        }
-
-        @Override
-        public boolean hasNext(){
-            if(!valid) throw new ArcRuntimeException("#iterator() cannot be used nested.");
-            return index < seq.size;
         }
 
         @Override
@@ -504,20 +363,7 @@ public class FloatSeq implements Iterable<Float>{
         }
 
         public float nextFloat(){
-            if(index >= seq.size) throw new NoSuchElementException(String.valueOf(index));
-            if(!valid) throw new ArcRuntimeException("#iterator() cannot be used nested.");
-            return seq.items[index++];
-        }
-
-        @Override
-        public void remove(){
-            index--;
-            seq.removeIndex(index);
-        }
-
-        @Override
-        public Iterator<Float> iterator(){
-            return this;
+            return seq.items[advance()];
         }
     }
 }
