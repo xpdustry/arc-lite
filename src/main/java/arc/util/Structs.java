@@ -8,14 +8,28 @@ import arc.struct.*;
 import java.util.*;
 
 public class Structs{
+    private static final Boolf<?> always = o -> true;
+
+    public static boolean notNull(Object o) {
+        return o != null;
+    }
 
     public static boolean eq(Object a, Object b){
         return (a == b) || (a != null && a.equals(b));
     }
 
+    public static int hash(Object o) {
+        return o == null ? 0 : o.hashCode();
+    }
+
     @SuppressWarnings("unchecked")
     public static <T> T self(Object o) {
         return (T)o;
+    }
+
+    @SuppressWarnings("unchecked")
+    public static <T> Boolf<T> always() {
+        return (Boolf<T>)always;
     }
 
     @SafeVarargs
@@ -230,10 +244,7 @@ public class Structs{
 
     /** Uses identity comparisons, then {@link Object#equals(Object)}. */
     public static <T> boolean contains(T[] array, T value){
-        for(T t : array){
-            if(t == value || (value != null && value.equals(t))) return true;
-        }
-        return false;
+        return indexOf(array, value) != -1;
     }
 
     public static <T> boolean contains(T[] array, Boolf<T> value){
@@ -258,9 +269,10 @@ public class Structs{
         return null;
     }
 
+    /** Uses identity comparisons, then {@link Object#equals(Object)}. */
     public static <T> int indexOf(T[] array, T value){
         for(int i = 0; i < array.length; i++){
-            if(array[i] == value) return i;
+            if(eq(value, array[i])) return i;
         }
         return -1;
     }
@@ -412,13 +424,7 @@ public class Structs{
     }
 
     public static <T> T findMin(Iterable<T> arr, Comparator<T> comp){
-        T result = null;
-        for(T t : arr){
-            if(result == null || comp.compare(result, t) > 0){
-                result = t;
-            }
-        }
-        return result;
+        return findMin(arr, always(), comp);
     }
 
     public static <T> T findMin(Iterable<T> arr, Boolf<T> allow, Comparator<T> comp){

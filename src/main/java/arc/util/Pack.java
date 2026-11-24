@@ -4,7 +4,7 @@ import arc.math.*;
 
 public class Pack{
 
-    /** Packs [0-1] texture coordinates or positions into a single float. For use in VertexAttribute.packedTexCoords/packedPosition. */
+    /** Packs [0-1] coordinates or positions into a single float. */
     public static float packUv(float x, float y){
         return Float.intBitsToFloat(((int)(Mathf.clamp(x) * 65535)) | (((int)(Mathf.clamp(y) * 65535)) << 16));
     }
@@ -77,7 +77,6 @@ public class Pack{
         return (short)((left << 8) | (right & 0xFF));
     }
 
-    /** The same array instance is returned each call. */
     public static byte[] bytes(int i, byte[] result){
         result[0] = (byte)(i >> 24);
         result[1] = (byte)(i >> 16);
@@ -87,7 +86,6 @@ public class Pack{
         return result;
     }
 
-    /** The same array instance is returned each call. */
     public static short[] shorts(long i, short[] resultShort){
         resultShort[0] = (short)(i >> 48);
         resultShort[1] = (short)(i >> 32);

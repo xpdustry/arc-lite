@@ -6,6 +6,7 @@ import java.util.concurrent.atomic.AtomicReferenceArray;
 
 import arc.math.Mathf;
 import arc.struct.Seq;
+import arc.util.Structs;
 
 /**
  * A pool of objects that can be reused to avoid allocation.
@@ -38,6 +39,7 @@ abstract public class Pool<T>{
     }
 
     /** @param capacity The maximum pool capacity. Rounded up to a power of two. */
+    @SuppressWarnings("deprecation")
     public Pool(int capacity){
       this.capacity = capacity <= 1 ? 1 : Integer.highestOneBit(capacity - 1) << 1;
       this.max = this.capacity;
@@ -126,7 +128,7 @@ abstract public class Pool<T>{
      */
     public void freeAll(Seq<T> objects){
         if(objects == null) throw new IllegalArgumentException("objects cannot be null.");
-        objects.each(o -> o != null, this::offer);
+        objects.each(Structs::notNull, this::offer);
     }
 
     /** Fill the pool with new objects. */
@@ -163,7 +165,6 @@ abstract public class Pool<T>{
     /** Pool that may return {@code null} if no object is currently available. */
     public static class NullablePool<T> extends Pool<T>{
         public NullablePool(){
-            super();
         }
 
         public NullablePool(int capacity){

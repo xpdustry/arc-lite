@@ -3,6 +3,7 @@ package arc.math.geom;
 import arc.func.*;
 import arc.math.geom.QuadTree.*;
 import arc.struct.*;
+import arc.util.Structs;
 
 /**
  * A basic quad tree.
@@ -274,7 +275,7 @@ public class QuadTree<T extends QuadTreeObject>{
      * This will never result in false positives.
      */
     public boolean any(float x, float y, float width, float height){
-        return find(x, y, width, height, o -> true) != null;
+        return find(x, y, width, height, Structs.always()) != null;
     }
 
     /**

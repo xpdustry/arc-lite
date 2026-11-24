@@ -352,8 +352,7 @@ public class IntMap<V> extends HashTable<IntMap.Entries<V>, IntMap<V>> implement
 
     @Override
     protected int hashEntry(int index){
-        V value = valueTable[index];
-        return keyTable[index] * 31 + (value == null ? 0 : value.hashCode());
+        return keyTable[index] * 31 + Structs.hash(valueTable[index]);
     }
 
     @Override
@@ -374,7 +373,7 @@ public class IntMap<V> extends HashTable<IntMap.Entries<V>, IntMap<V>> implement
 
     @Override
     protected int hashZero(){
-        return hasZeroValue && zeroValue != null ? zeroValue.hashCode() : 0;
+        return hasZeroValue ? Structs.hash(zeroValue) : 0;
     }
 
     @Override

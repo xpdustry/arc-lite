@@ -1,5 +1,6 @@
 package arc.graphics;
 
+import arc.func.Intc2;
 import arc.graphics.g2d.*;
 import arc.math.*;
 import arc.math.geom.*;
@@ -57,12 +58,15 @@ public class Pixmaps{
 
     public static Pixmap median(Pixmap input, int radius, double percentile, IntSeq tmp){
         Pixmap pixmap = new Pixmap(input.width, input.height);
-        input.each((x, y) -> {
-            tmp.clear();
-            Geometry.circle(x, y, pixmap.width, pixmap.height, radius, (cx, cy) -> tmp.add(input.get(cx, cy)));
-            tmp.sort();
-            pixmap.setRaw(x, y, tmp.get(Mathf.clamp((int)(tmp.size * percentile), 0, tmp.size - 1)));
-        });
+        Intc2 add = (cx, cy) -> tmp.add(input.get(cx, cy));
+        for(int y = 0; y < pixmap.height; y++){
+            for(int x = 0; x < pixmap.width; x++){
+                tmp.clear();
+                Geometry.circle(x, y, pixmap.width, pixmap.height, radius, add);
+                tmp.sort();
+                pixmap.setRaw(x, y, tmp.get(Mathf.clamp((int)(tmp.size * percentile), 0, tmp.size - 1)));
+            }
+        }
         return pixmap;
     }
 
@@ -103,7 +107,9 @@ public class Pixmaps{
                     outer:
                     for(int rx = -radius; rx <= radius; rx++){
                         for(int ry = -radius; ry <= radius; ry++){
-                            if(Structs.inBounds(rx + x, ry + y, region.width, region.height) && (rx*rx + ry*ry <= radius*radius) && region.getA(rx + x, ry + y) != 0){
+                            if(Structs.inBounds(rx + x, ry + y, region.width, region.height) &&
+                               rx*rx + ry*ry <= radius*radius &&
+                               region.getA(rx + x, ry + y) != 0){
                                 found = true;
                                 break outer;
                             }
@@ -146,7 +152,6 @@ public class Pixmaps{
     public static Pixmap resize(Pixmap input, int width, int height){
         Pixmap pixmap = new Pixmap(width, height);
         pixmap.draw(input, width / 2 - input.width / 2, height / 2 - input.height / 2);
-
         return pixmap;
     }
 
@@ -154,7 +159,6 @@ public class Pixmaps{
         Pixmap pixmap = new Pixmap(width, height);
         pixmap.fill(backgroundColor);
         pixmap.draw(input, width / 2 - input.width / 2, height / 2 - input.height / 2);
-
         return pixmap;
     }
 

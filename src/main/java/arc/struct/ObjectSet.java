@@ -63,9 +63,7 @@ public class ObjectSet<T> extends HashTable<ObjectSet.ObjectSetIterator<T>, Obje
 
     @Override
     public ObjectSet<T> copy(){
-        ObjectSet<T> result = new ObjectSet<>();
-        result.addAll(this);
-        return result;
+        return new ObjectSet<>(this);
     }
 
     /** Allocates a new set with all elements that match the predicate. */
@@ -115,11 +113,6 @@ public class ObjectSet<T> extends HashTable<ObjectSet.ObjectSetIterator<T>, Obje
 
     public T find(Boolf<T> predicate){
         return Structs.find(this, predicate);
-    }
-
-    @Override
-    public boolean any(){
-        return size > 0;
     }
 
     /**
@@ -176,7 +169,7 @@ public class ObjectSet<T> extends HashTable<ObjectSet.ObjectSetIterator<T>, Obje
     }
 
     public void removeAll(T[] array){
-        Structs.each(this::remove, array);
+        removeAll(array, 0, array.length);
     }
 
     public void removeAll(Seq<? extends T> array){

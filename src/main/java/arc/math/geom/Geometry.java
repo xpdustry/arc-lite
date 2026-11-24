@@ -3,6 +3,7 @@ package arc.math.geom;
 import arc.func.*;
 import arc.math.*;
 import arc.struct.*;
+import arc.util.Structs;
 
 public final class Geometry{
     /** Points representing cardinal directions, starting at the left and going counter-clockwise. */
@@ -100,16 +101,7 @@ public final class Geometry{
     }
 
     public static <T extends Position> T findClosest(float x, float y, Iterable<T> list){
-        T closest = null;
-        float cdist = 0f;
-        for(T t : list){
-            float dst = t.dst2(x, y);
-            if(closest == null || dst < cdist){
-                closest = t;
-                cdist = dst;
-            }
-        }
-        return closest;
+        return findClosest(x, y, list, Structs.always());
     }
 
     public static <T extends Position> T findClosest(float x, float y, Iterable<T> list, Boolf<T> predicate){
@@ -127,16 +119,7 @@ public final class Geometry{
     }
 
     public static <T extends Position> T findFurthest(float x, float y, Iterable<T> list){
-        T furthest = null;
-        float fdist = 0f;
-        for(T t : list){
-            float dst = t.dst2(x, y);
-            if(furthest == null || dst > fdist){
-                furthest = t;
-                fdist = dst;
-            }
-        }
-        return furthest;
+        return findFurthest(x, y, list, Structs.always());
     }
 
     public static <T extends Position> T findFurthest(float x, float y, Iterable<T> list, Boolf<T> predicate){

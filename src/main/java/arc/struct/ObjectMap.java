@@ -23,14 +23,9 @@ public class ObjectMap<K, V> extends HashTable<ObjectMap.Entries<K, V>, ObjectMa
     protected transient Values<V> values1, values2;
     protected transient Keys<K> keys1, keys2;
 
-    @SuppressWarnings("unchecked")
     public static <K, V> ObjectMap<K, V> of(Object... values){
         ObjectMap<K, V> map = new ObjectMap<>();
-
-        for(int i = 0; i < values.length / 2; i++){
-            map.put((K)values[i * 2], (V)values[i * 2 + 1]);
-        }
-
+        map.putAll(values);
         return map;
     }
 
@@ -314,8 +309,7 @@ public class ObjectMap<K, V> extends HashTable<ObjectMap.Entries<K, V>, ObjectMa
 
     @Override
     protected int hashEntry(int index){
-        V value = valueTable[index];
-        return keyTable[index].hashCode() + (value == null ? 0 : value.hashCode());
+        return keyTable[index].hashCode() + Structs.hash(valueTable[index]);
     }
 
     @Override

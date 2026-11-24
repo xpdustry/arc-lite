@@ -359,7 +359,7 @@ public class ArrayMap<K, V> extends BaseSeq<ArrayMap.Entries<K, V>, ArrayMap<K, 
     protected int hashItem(int index){
         K key = keys[index];
         V value = values[index];
-        return (key == null ? 0 : key.hashCode() * 31) + (value == null ? 0 : value.hashCode());
+        return Structs.hash(key) * 31 + Structs.hash(value);
     }
 
     @Override

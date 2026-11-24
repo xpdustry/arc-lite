@@ -47,12 +47,9 @@ public class OrderedMap<K, V> extends ObjectMap<K, V>{
         keys = new Seq<>(map.keys);
     }
 
-    @SuppressWarnings("unchecked")
     public static <K, V> OrderedMap<K, V> of(Object... values){
         OrderedMap<K, V> map = new OrderedMap<>();
-        for(int i = 0; i < values.length / 2; i++){
-            map.put((K)values[i * 2], (V)values[i * 2 + 1]);
-        }
+        map.putAll(values);
         return map;
     }
 
@@ -210,22 +207,17 @@ public class OrderedMap<K, V> extends ObjectMap<K, V>{
         return keys1 = new OrderedMapKeys<>(this);
     }
 
+    /** Appends the entries in the order of the keys. */
     @Override
-    public String toString(String separator, boolean braces){
-        if(size == 0) return braces ? "{}" : "";
-        StringBuilder buffer = new StringBuilder(32);
-        if(braces) buffer.append('{');
-        Seq<K> keys = this.keys;
-        for(int i = 0, n = keys.size; i < n; i++){
-            K key = keys.get(i);
+    protected String toString(String separator, String open, String close){
+        StringBuilder buffer = new StringBuilder(32).append(open);
+        K[] keys = this.keys.items;
+        for(int i = 0, n = this.keys.size; i < n; i++){
             if(i > 0) buffer.append(separator);
-            buffer.append(key == this ? "(this)" : key);
-            buffer.append('=');
-            V value = get(key);
-            buffer.append(value == this ? "(this)" : value);
+            appendObject(buffer, keys[i]);
+            appendObject(buffer.append('='), get(keys[i]));
         }
-        if(braces) buffer.append('}');
-        return buffer.toString();
+        return buffer.append(close).toString();
     }
 
 

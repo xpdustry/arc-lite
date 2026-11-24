@@ -340,8 +340,7 @@ public class LongMap<V> extends HashTable<LongMap.Entries<V>, LongMap<V>> implem
 
     @Override
     protected int hashEntry(int index){
-        V value = valueTable[index];
-        return (int)(keyTable[index] * 31) + (value == null ? 0 : value.hashCode());
+        return (int)(keyTable[index] * 31) + Structs.hash(valueTable[index]);
     }
 
     @Override
@@ -367,7 +366,7 @@ public class LongMap<V> extends HashTable<LongMap.Entries<V>, LongMap<V>> implem
 
     @Override
     protected int hashZero(){
-        return hasZeroValue && zeroValue != null ? zeroValue.hashCode() : 0;
+        return hasZeroValue ? Structs.hash(zeroValue) : 0;
     }
 
     @Override

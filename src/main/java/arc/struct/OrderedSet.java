@@ -84,8 +84,7 @@ public class OrderedSet<T> extends ObjectSet<T>{
     }
 
     public void addAll(OrderedSet<T> set){
-        ensureCapacity(set.size);
-        set.items.each(this::add);
+        addAll(set.items);
     }
 
     @Override
@@ -175,24 +174,16 @@ public class OrderedSet<T> extends ObjectSet<T>{
         return (OrderedSetIterator<T>)super.iterator();
     }
 
+    /** Appends the items in their order. */
     @Override
-    public String toString(){
-        if(size == 0) return "{}";
+    protected String toString(String separator, String open, String close){
+        StringBuilder buffer = new StringBuilder(32).append(open);
         T[] items = this.items.items;
-        StringBuilder buffer = new StringBuilder(32);
-        buffer.append('{');
-        buffer.append(items[0]);
-        for(int i = 1; i < size; i++){
-            buffer.append(", ");
-            buffer.append(items[i]);
+        for(int i = 0, n = this.items.size; i < n; i++){
+            if(i > 0) buffer.append(separator);
+            appendObject(buffer, items[i]);
         }
-        buffer.append('}');
-        return buffer.toString();
-    }
-
-    @Override
-    public String toString(String separator){
-        return items.toString(separator);
+        return buffer.append(close).toString();
     }
 
 

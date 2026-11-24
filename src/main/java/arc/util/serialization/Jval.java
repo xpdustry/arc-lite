@@ -400,7 +400,7 @@ public class Jval{
 
     @Override
     public int hashCode(){
-        return value == null ? 0 : value.hashCode();
+        return Structs.hash(value);
     }
 
     /** Alias class of whatever is used to store json maps (objects). */

@@ -550,7 +550,7 @@ public class Pixmap implements Disposable{
 
     /** @return The pixel color in RGBA8888 format, clamped to image bounds. */
     public int getClamp(int x, int y){
-        return getRaw(Math.max(Math.min(x, width - 1), 0), Math.max(Math.min(y, height - 1), 0));
+        return getRaw(Mathf.clamp(x, 0, width - 1), Mathf.clamp(y, 0, height - 1));
     }
 
     /** @return The pixel color in RGBA8888 format. No bounds checks are done! */

@@ -114,11 +114,7 @@ public class Seq<T> extends BaseSeq<Seq.SeqIterator<T>, Seq<T>> implements Itera
     }
 
     public static <T> Seq<T> with(Iterable<T> array){
-        Seq<T> out = new Seq<>();
-        for(T thing : array){
-            out.add(thing);
-        }
-        return out;
+        return new Seq<T>().addAll(array);
     }
 
     public static <T, V> Seq<V> map(T[] array, Func<T, V> mapper){
@@ -166,7 +162,7 @@ public class Seq<T> extends BaseSeq<Seq.SeqIterator<T>, Seq<T>> implements Itera
     }
 
     public <K> ObjectMap<K, T> asMap(Func<T, K> keygen){
-        return asMap(keygen, t -> t);
+        return asMap(keygen, Structs::self);
     }
 
     public ObjectSet<T> asSet(){
@@ -316,14 +312,7 @@ public class Seq<T> extends BaseSeq<Seq.SeqIterator<T>, Seq<T>> implements Itera
     }
 
     public T min(Comparator<T> func){
-        T result = null;
-        for(int i = 0; i < size; i++){
-            T t = items[i];
-            if(result == null || func.compare(result, t) > 0){
-                result = t;
-            }
-        }
-        return result;
+        return min(Structs.always(), func);
     }
 
     public T max(Comparator<T> func){
@@ -364,17 +353,7 @@ public class Seq<T> extends BaseSeq<Seq.SeqIterator<T>, Seq<T>> implements Itera
     }
 
     public T min(Floatf<T> func){
-        T result = null;
-        float min = Float.MAX_VALUE;
-        for(int i = 0; i < size; i++){
-            T t = items[i];
-            float val = func.get(t);
-            if(val <= min){
-                result = t;
-                min = val;
-            }
-        }
-        return result;
+        return min(Structs.always(), func);
     }
 
     public T max(Boolf<T> filter, Floatf<T> func){
@@ -393,17 +372,7 @@ public class Seq<T> extends BaseSeq<Seq.SeqIterator<T>, Seq<T>> implements Itera
     }
 
     public T max(Floatf<T> func){
-        T result = null;
-        float max = Float.NEGATIVE_INFINITY;
-        for(int i = 0; i < size; i++){
-            T t = items[i];
-            float val = func.get(t);
-            if(val >= max){
-                result = t;
-                max = val;
-            }
-        }
-        return result;
+        return max(Structs.always(), func);
     }
 
     public @Nullable T find(Boolf<T> predicate){
@@ -838,8 +807,7 @@ public class Seq<T> extends BaseSeq<Seq.SeqIterator<T>, Seq<T>> implements Itera
 
     @Override
     protected int hashItem(int index){
-        T item = items[index];
-        return item == null ? 0 : item.hashCode();
+        return Structs.hash(items[index]);
     }
 
     /** Sorts the array. This method is not thread safe (uses {@link Sort#instance()}). */
@@ -860,11 +828,7 @@ public class Seq<T> extends BaseSeq<Seq.SeqIterator<T>, Seq<T>> implements Itera
 
     public Seq<T> selectFrom(Seq<T> base, Boolf<T> predicate){
         clear();
-        base.each(t -> {
-            if(predicate.get(t)){
-                add(t);
-            }
-        });
+        base.each(predicate, this::add);
         return this;
     }
 

@@ -127,8 +127,7 @@ public class Queue<T> extends BaseQueue<Queue.QueueIterator<T>, Queue<T>> implem
 
     @Override
     protected int hashItem(int at){
-        T value = values[at];
-        return value == null ? 0 : value.hashCode();
+        return Structs.hash(values[at]);
     }
 
     /**

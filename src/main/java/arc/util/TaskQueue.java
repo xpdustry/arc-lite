@@ -3,7 +3,7 @@ package arc.util;
 import java.util.concurrent.atomic.*;
 
 /**
- * A lock-less thread-safe unbounded queue. Allocation is only done when growing.
+ * A lock-less thread-safe unbounded MPSC queue. Allocation is only done when growing.
  * <p>
  * Why? ... Because it's funny having an overkill thing XD.
  */
@@ -92,18 +92,14 @@ public class TaskQueue{
     public void clear(){
         // Fast path
         if(drainer == Thread.currentThread()){
-            removeAll();
+            while(poll() != null) size.decrementAndGet();
             return;
         }
         if(!draining.compareAndSet(false, true)) return;
         try{
-            removeAll();
+            while(poll() != null) size.decrementAndGet();
         }finally{
             draining.set(false);
         }
-    }
-
-    protected void removeAll(){
-        while(poll() != null) size.decrementAndGet();
     }
 }

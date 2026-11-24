@@ -1,6 +1,7 @@
 package arc.math.geom;
 
 import arc.struct.*;
+import arc.util.Structs;
 
 /**
  * Encapsulates an axis aligned bounding box represented by a minimum and a maximum Vector. Additionally you can query for the
@@ -164,8 +165,7 @@ public class BoundingBox{
      */
     public BoundingBox set(Vec3[] points){
         this.inf();
-        for(Vec3 l_point : points)
-            this.ext(l_point);
+        Structs.each(this::ext, points);
         return this;
     }
 
@@ -176,8 +176,7 @@ public class BoundingBox{
      */
     public BoundingBox set(Seq<Vec3> points){
         this.inf();
-        for(Vec3 l_point : points)
-            this.ext(l_point);
+        points.each(this::ext);
         return this;
     }
 

@@ -105,11 +105,8 @@ public class CumulativeDistribution<T>{
      * The object must be present in the distribution.
      */
     public void setInterval(T obj, float intervalSize){
-        for(CumulativeValue value : values)
-            if(value.value == obj){
-                value.interval = intervalSize;
-                return;
-            }
+        CumulativeValue value = values.find(v -> v.value == obj);
+        if(value != null) value.interval = intervalSize;
     }
 
     /** Sets the interval size for the value at the given index */

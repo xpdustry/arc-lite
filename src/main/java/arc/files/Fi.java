@@ -689,7 +689,7 @@ public class Fi implements Comparable<Fi>{
         if(parent == null){
             if(OS.isWindows){
                 return new Fi("", type){
-                    Fi[] children = Seq.with(File.listRoots()).map(Fi::new).toArray(Fi.class);
+                    Fi[] children = Structs.map(File.listRoots(), Fi.class, Fi::new);
 
                     @Override
                     public Fi parent(){
@@ -714,11 +714,6 @@ public class Fi implements Comparable<Fi>{
                     @Override
                     public Fi[] list(){
                         return children;
-                    }
-
-                    @Override
-                    public Fi[] list(FileFilter filter){
-                        return Seq.select(list(), f -> filter.accept(f.file)).toArray(Fi.class);
                     }
                 };
             }else if(type == FileType.absolute){

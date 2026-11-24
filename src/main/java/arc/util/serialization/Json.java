@@ -193,6 +193,7 @@ public class Json{
         metadata.elementType = elementType;
     }
 
+    @SuppressWarnings("deprecation")
     public OrderedMap<String, FieldMetadata> getFields(Class type){
         OrderedMap<String, FieldMetadata> fields = typeToFields.get(type);
         if(fields != null) return fields;
@@ -1208,7 +1209,8 @@ public class Json{
 
         if(jsonData.isNumber()){
             try{
-                if(boxed == null || boxed == Number.class) return jsonData.isLong() ? (T)(Long)jsonData.asLong() : (T)(Double)jsonData.asDouble();
+                if(boxed == null || boxed == Number.class)
+                    return jsonData.isLong() ? (T)(Long)jsonData.asLong() : (T)(Double)jsonData.asDouble();
                 if(boxed == Float.class) return (T)(Float)jsonData.asFloat();
                 if(boxed == Integer.class) return (T)(Integer)jsonData.asInt();
                 if(boxed == Long.class) return (T)(Long)jsonData.asLong();
@@ -1232,7 +1234,10 @@ public class Json{
             if(boxed == null || boxed == String.class) return (T)string;
             try{
                 if(boxed == Integer.class) return (T)Integer.valueOf(string);
-                if(boxed == Float.class) return string.endsWith("f") ? (T)Float.valueOf(string.substring(0, string.length() - 1)) : string.endsWith("f,") ? (T)Float.valueOf(string.substring(0, string.length() - 2)) : (T)Float.valueOf(string);
+                if(boxed == Float.class) return
+                    string.endsWith("f") ? (T)Float.valueOf(string.substring(0, string.length() - 1)) :
+                    string.endsWith("f,") ? (T)Float.valueOf(string.substring(0, string.length() - 2)) :
+                    (T)Float.valueOf(string);
                 if(boxed == Long.class) return (T)Long.valueOf(string);
                 if(boxed == Double.class) return (T)Double.valueOf(string);
                 if(boxed == Short.class) return (T)Short.valueOf(string);
@@ -1241,7 +1246,8 @@ public class Json{
             if(boxed == Boolean.class) return (T)Boolean.valueOf(string);
             if(boxed == Character.class && !string.isEmpty()) return (T)(Character)string.charAt(0);
             if(boxed == CharSequence.class) return (T)string;
-            throw new SerializationException("Unable to convert '" + jsonData + "' to " + (type.isArray() ? type.getComponentType() + "[]" : type.getName()));
+            throw new SerializationException("Unable to convert '" + jsonData + "' to " +
+                                             (type.isArray() ? type.getComponentType() + "[]" : type.getName()));
         }
 
         return null;
@@ -1326,7 +1332,9 @@ public class Json{
 
     /** Creates the default type directly, else the specified type with reflection. */
     protected <T> T newInstance(Class type, Class<?> defaultType, Prov<T> creator){
-        return type == defaultType || type.isInterface() && type.isAssignableFrom(defaultType) ? creator.get() : (T)newInstance(type);
+        return type == defaultType || type.isInterface() && type.isAssignableFrom(defaultType)
+             ? creator.get()
+             : (T)newInstance(type);
     }
 
     protected Object newInstance(Class type){
@@ -1586,25 +1594,37 @@ public class Json{
     // Default serializers
     static{
         // Lists
-        defaultInheritSerializers.put(Seq.class, StructSerializer.list(Seq.class, Seq::new, StructLayout.array, Seq::each, Seq::add));
-        defaultInheritSerializers.put(Queue.class, StructSerializer.list(Queue.class, Queue::new, StructLayout.array, Queue::each, Queue::addLast));
-        defaultInheritSerializers.put(IntSeq.class, StructSerializer.list(IntSeq.class, IntSeq::new, StructLayout.array, Integer.class,
+        defaultInheritSerializers.put(Seq.class,
+            StructSerializer.list(Seq.class, Seq::new, StructLayout.array, Seq::each, Seq::add));
+        defaultInheritSerializers.put(Queue.class,
+            StructSerializer.list(Queue.class, Queue::new, StructLayout.array, Queue::each, Queue::addLast));
+        defaultInheritSerializers.put(IntSeq.class,
+            StructSerializer.list(IntSeq.class, IntSeq::new, StructLayout.array, Integer.class,
             (s, c) -> s.each(c::get), (s, v) -> s.add((Integer)v)));
-        defaultInheritSerializers.put(ObjectSet.class, StructSerializer.list(ObjectSet.class, ObjectSet::new, StructLayout.values, ObjectSet::each, ObjectSet::add));
-        defaultInheritSerializers.put(IntSet.class, StructSerializer.list(IntSet.class, IntSet::new, StructLayout.values, Integer.class,
+        defaultInheritSerializers.put(ObjectSet.class,
+            StructSerializer.list(ObjectSet.class, ObjectSet::new, StructLayout.values, ObjectSet::each, ObjectSet::add));
+        defaultInheritSerializers.put(IntSet.class,
+            StructSerializer.list(IntSet.class, IntSet::new, StructLayout.values, Integer.class,
             (s, c) -> s.each(c::get), (s, v) -> s.add((Integer)v)));
-        defaultInheritSerializers.put(Collection.class, StructSerializer.<Collection>list(ArrayList.class, ArrayList::new, StructLayout.items, Structs::each, Collection::add));
+        defaultInheritSerializers.put(Collection.class,
+            StructSerializer.<Collection>list(ArrayList.class, ArrayList::new, StructLayout.items, Structs::each, Collection::add));
 
         // Maps
-        defaultInheritSerializers.put(ObjectMap.class, StructSerializer.map(ObjectMap.class, ObjectMap::new, ObjectMap::each, ObjectMap::put));
-        defaultInheritSerializers.put(ArrayMap.class, StructSerializer.map(ArrayMap.class, ArrayMap::new, ArrayMap::each, ArrayMap::put));
-        defaultInheritSerializers.put(Map.class, StructSerializer.<Map>map(HashMap.class, HashMap::new,
+        defaultInheritSerializers.put(ObjectMap.class,
+            StructSerializer.map(ObjectMap.class, ObjectMap::new, ObjectMap::each, ObjectMap::put));
+        defaultInheritSerializers.put(ArrayMap.class,
+            StructSerializer.map(ArrayMap.class, ArrayMap::new, ArrayMap::each, ArrayMap::put));
+        defaultInheritSerializers.put(Map.class,
+            StructSerializer.<Map>map(HashMap.class, HashMap::new,
             (m, c) -> Structs.each(((Map<?, ?>)m).entrySet(), o -> c.get(o.getKey(), o.getValue())), Map::put));
-        defaultInheritSerializers.put(IntMap.class, StructSerializer.map(IntMap.class, IntMap::new, Integer.class, null, IntMap::each,
+        defaultInheritSerializers.put(IntMap.class,
+            StructSerializer.map(IntMap.class, IntMap::new, Integer.class, null, IntMap::each,
             (m, k, v) -> m.put((Integer)k, v)));
-        defaultInheritSerializers.put(ObjectIntMap.class, StructSerializer.map(ObjectIntMap.class, ObjectIntMap::new, null, Integer.class, ObjectIntMap::each,
+        defaultInheritSerializers.put(ObjectIntMap.class,
+            StructSerializer.map(ObjectIntMap.class, ObjectIntMap::new, null, Integer.class, ObjectIntMap::each,
             (m, k, v) -> m.put(k, (Integer)v)));
-        defaultInheritSerializers.put(ObjectFloatMap.class, StructSerializer.map(ObjectFloatMap.class, ObjectFloatMap::new, null, Float.class, ObjectFloatMap::each,
+        defaultInheritSerializers.put(ObjectFloatMap.class,
+            StructSerializer.map(ObjectFloatMap.class, ObjectFloatMap::new, null, Float.class, ObjectFloatMap::each,
             (m, k, v) -> m.put(k, (Float)v)));
 
         // Enum

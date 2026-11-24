@@ -368,7 +368,9 @@ public class Server implements EndPoint{
 
     public void keepAlive(){
         long time = Time.millis();
-        Structs.each(c -> c.tcp.needsKeepAlive(time), c -> c.sendTCP(FrameworkMessage.keepAlive), connections);
+        for(Connection connection : connections){
+            if(connection.tcp.needsKeepAlive(time)) connection.sendTCP(FrameworkMessage.keepAlive);
+        }
     }
 
     @Override
@@ -632,7 +634,9 @@ public class Server implements EndPoint{
         if(buffer == null) return;
 
         try{
-            Structs.each(c -> c.getID() != exceptID, c -> sendBuffer(c, buffer, reliable), connections);
+            for(Connection connection : connections){
+                if(connection.getID() != exceptID) sendBuffer(connection, buffer, reliable);
+            }
         }finally{
             ByteBufferPool.free(buffer);
         }
@@ -645,7 +649,9 @@ public class Server implements EndPoint{
         if(buffer == null) return;
 
         try{
-            Structs.each(connections, c -> c.getID() != exceptID, c -> sendBuffer(c, buffer, reliable));
+            for(Connection connection : connections){
+                if(connection.getID() != exceptID) sendBuffer(connection, buffer, reliable);
+            }
         }finally{
             ByteBufferPool.free(buffer);
         }

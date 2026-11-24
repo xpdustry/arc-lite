@@ -493,7 +493,6 @@ public class JsonSettings implements Autosaver.Saveable {
     return value == null ? def : value;
   }
 
-  //NOTE: incompatible with standard arc
   public long getLong(String name, long def) {
     Long value = getOrPut(name, Long.class, def);
     return value == null ? def : value;
@@ -549,7 +548,6 @@ public class JsonSettings implements Autosaver.Saveable {
     return !val;
   }
 
-  //NOTE: incompatible with standard arc
   /** Toggles a boolean value. */
   public synchronized boolean toggle(String name) {
     boolean val = getBool(name);

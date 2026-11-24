@@ -10,7 +10,6 @@ import arc.math.FloatCounter;
  * @author xoppa
  */
 public class PerformanceCounter{
-    private static final float nano2seconds = 1f / 1000000000.0f;
     /** The time value of this counter (seconds) */
     public final FloatCounter time;
     /** The load value of this counter */
@@ -43,7 +42,7 @@ public class PerformanceCounter{
      */
     public void tick(){
         final long t = Time.nanos();
-        if(lastTick > 0L) tick((t - lastTick) * nano2seconds);
+        if(lastTick > 0L) tick((t - lastTick) / Time.nanosPerSecond);
         lastTick = t;
     }
 
@@ -57,7 +56,7 @@ public class PerformanceCounter{
             return;
         }
 
-        time.put(current / nano2seconds);
+        time.put(current * Time.nanosPerSecond);
 
         final float currentLoad = delta == 0f ? 0f : current / delta;
         load.put((delta > 1f) ? currentLoad : delta * currentLoad + (1f - delta) * load.latest);
@@ -78,7 +77,7 @@ public class PerformanceCounter{
      */
     public void stop(){
         if(startTime > 0L){
-            current += Time.sinceNanos(startTime) * nano2seconds;
+            current += Time.sinceNanos(startTime) / Time.nanosPerSecond;
             startTime = 0L;
             valid = true;
         }
