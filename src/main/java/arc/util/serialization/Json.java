@@ -154,26 +154,25 @@ public class Json{
 
     /* Registers a serializer for the parent's class that will be inherited. */
     public <T> void setInheritSerializer(Class<T> type, Serializer<T> serializer){
-        if (inheritSerializers.containsKey(type)) inheritSerializers.remove(type);
-        inheritSerializers.put(type, serializer); // now at end
-        Seq<Class> keys = inheritSerializers.orderedKeys();
-        int index = Math.max(keys.indexOf(c -> c.isAssignableFrom(type)), 0);
-        keys.remove(keys.size - 1); // remove the new one from end
-        keys.insert(index, type); // insert at correct position
+        putInheritSerializer(inheritSerializers, type, serializer);
     }
 
+    /** Finds the serializer of the closest registered parent. */
     public <T> Serializer<T> getInheritSerializer(Class<T> type){
-        Serializer<T> serializer = findInheritSerializer(inheritSerializers, type);
-        return serializer != null ? serializer : findInheritSerializer(defaultInheritSerializers, type);
+        Serializer<T> serializer = inheritSerializers.get(inheritType(inheritSerializers, type));
+        return serializer != null ? serializer : defaultInheritSerializers.get(inheritType(defaultInheritSerializers, type));
     }
 
-    private static Serializer findInheritSerializer(OrderedMap<Class, Serializer> serializers, Class type){
+    protected static void putInheritSerializer(OrderedMap<Class, Serializer> serializers, Class type, Serializer serializer){
+        serializers.remove(type);
         Seq<Class> keys = serializers.orderedKeys();
-        for(int i = 0; i < keys.size; i++){
-            Class parent = keys.get(i);
-            if(parent.isAssignableFrom(type)) return serializers.get(parent);
-        }
-        return null;
+        int index = keys.indexOf(c -> c.isAssignableFrom(type));
+        serializers.put(type, serializer); // Added at the end
+        if(index != -1) keys.insert(index, keys.pop());
+    }
+
+    protected static @Nullable Class inheritType(OrderedMap<Class, Serializer> serializers, Class type){
+        return serializers.orderedKeys().find(t -> t.isAssignableFrom(type));
     }
 
     /** When true, field values that are identical to a newly constructed instance are not written. Default is true. */
@@ -905,6 +904,7 @@ public class Json{
             throw new SerializationException("Field not found: " + fieldName + " (" + type.getName() + ")");
         Field field = metadata.field;
         if(elementType == null) elementType = metadata.elementType;
+        if(keyType == null) keyType = metadata.keyType;
         readField(object, field, jsonName, elementType, keyType, jsonMap);
     }
 
@@ -1000,6 +1000,7 @@ public class Json{
         FieldMetadata metadata = fields.get(fieldName);
         if(metadata == null) throw new SerializationException("Field not found: " + fieldName + " (" + type.getName() + ")");
         if(elementType == null) elementType = metadata.elementType;
+        if(keyType == null) keyType = metadata.keyType;
         return readField(metadata.field, jsonName, elementType, keyType, jsonMap);
     }
 
@@ -1161,29 +1162,25 @@ public class Json{
         }
 
         if (type != null) {
-            Serializer serializer = findSerializer(type);
-            if(serializer != null){
-                return (T)serializer.read(this, jsonData, type, elementType, keytype);
-            }
+            Serializer serializer = getSerializer(type);
+            boolean serializable = JsonSerializable.class.isAssignableFrom(type);
 
-            if(!jsonData.isObject() && JsonSerializable.class.isAssignableFrom(type)){
-                // A Serializable may be read as an array, string, etc, even though it will be written as an object.
+            // A Serializable may be read as an array, string, etc, even though it will be written as an object.
                 Object object = newInstance(type);
-                ((JsonSerializable)object).read(this, jsonData);
+            if(serializer == null && !(serializable && jsonData.isObject()))
+                serializer = getInheritSerializer(type);
+            if(serializer != null)
+                return (T)serializer.read(this, jsonData, type, elementType, keytype);
+
+            if(serializable){
+                JsonSerializable object = (JsonSerializable)newInstance(type);
+                object.read(this, jsonData);
                 return (T)object;
             }
 
             if(jsonData.isObject()){
-                if(Reflect.isValueType(type)){
-                    return readValue("value", type, jsonData);
-                }
-
+                if(Reflect.isValueType(type)) return readValue("value", type, jsonData);
                 Object object = newInstance(type);
-                if(object instanceof JsonSerializable){
-                    ((JsonSerializable)object).read(this, jsonData);
-                    return (T)object;
-                }
-
                 readFields(object, jsonData);
                 return (T)object;
             }
@@ -1432,33 +1429,61 @@ public class Json{
         public @Nullable Class keyType;
 
         public FieldMetadata(Field field){
-            boolean isMap = ObjectMap.class.isAssignableFrom(field.getType()) || Map.class.isAssignableFrom(field.getType()) ||
-                            ArrayMap.class.isAssignableFrom(field.getType());
-
+            Class type = field.getType();
+            boolean isMap = ObjectMap.class.isAssignableFrom(type) || Map.class.isAssignableFrom(type) ||
+                            ArrayMap.class.isAssignableFrom(type);
+            Type[] types = typeArguments(field);
             this.field = field;
-            this.elementType = getElementType(field, isMap ? 1 : 0);
-            keyType = isMap ? getElementType(field, 0) : null;
+            elementType = typeArgument(types, isMap ? 1 : 0);
+            keyType = isMap ? typeArgument(types, 0) : null;
         }
+
     }
 
-    static Class getElementType(Field field, int index){
-        Type genericType = field.getGenericType();
-        if(genericType instanceof ParameterizedType){
-            Type[] actualTypes = ((ParameterizedType)genericType).getActualTypeArguments();
-            if(actualTypes.length - 1 >= index){
-                Type actualType = actualTypes[index];
-                if(actualType instanceof Class)
-                    return (Class)actualType;
-                else if(actualType instanceof ParameterizedType)
-                    return (Class)((ParameterizedType)actualType).getRawType();
-                else if(actualType instanceof GenericArrayType){
-                    Type componentType = ((GenericArrayType)actualType).getGenericComponentType();
-                    if(componentType instanceof Class)
-                        return java.lang.reflect.Array.newInstance((Class)componentType, 0).getClass();
-                }
-            }
+    static Class typeArgument(Type[] types, int index){
+        return index < types.length ? rawClass(types[index]) : null;
+    }
+
+    static Class rawClass(Type type){
+        if(type instanceof Class) return (Class)type;
+        if(type instanceof ParameterizedType) return (Class)((ParameterizedType)type).getRawType();
+        if(!(type instanceof GenericArrayType)) return null;
+        Class component = rawClass(((GenericArrayType)type).getGenericComponentType());
+        return component == null ? null : Array.newInstance(component, 0).getClass();
+    }
+
+    /** Returns the type arguments of the field type, resolved for the default struct it inherits if any. */
+    static Type[] typeArguments(Field field){
+        Class type = field.getType(), struct = inheritType(defaultInheritSerializers, type);
+        Type generic = field.getGenericType();
+        Type[] arguments = generic instanceof ParameterizedType ? ((ParameterizedType)generic).getActualTypeArguments() : type.getTypeParameters();
+        return defaultInheritSerializers.get(struct) instanceof StructSerializer ? typeArguments(type, arguments, struct) : arguments;
+    }
+
+    /** @return the type arguments of the parent, resolved from the ones of the type when possible. */
+    static Type[] typeArguments(Class type, Type[] arguments, Class parent){
+        if(type == parent) return arguments;
+        Type[] interfaces = type.getGenericInterfaces();
+        for(int i = -1; i < interfaces.length; i++){
+            Type direct = i == -1 ? type.getGenericSuperclass() : interfaces[i];
+            Class raw = rawClass(direct);
+            if(raw == null || !parent.isAssignableFrom(raw)) continue;
+            if(!(direct instanceof ParameterizedType)) return typeArguments(raw, raw.getTypeParameters(), parent); // Raw parent, so unknown
+            Type[] directArguments = ((ParameterizedType)direct).getActualTypeArguments().clone();
+            TypeVariable[] variables = type.getTypeParameters();
+            for(int j = 0; j < directArguments.length; j++) directArguments[j] = resolve(directArguments[j], variables, arguments);
+            return typeArguments(raw, directArguments, parent);
         }
-        return null;
+        return arguments; // Unreachable, the parent being one of the type
+    }
+
+    static Type resolve(Type type, TypeVariable[] variables, Type[] values){
+        if(type instanceof GenericArrayType){
+            Class component = rawClass(resolve(((GenericArrayType)type).getGenericComponentType(), variables, values));
+            return component == null ? type : Array.newInstance(component, 0).getClass();
+        }
+        int index = Structs.indexOf(variables, type);
+        return index == -1 ? type : values[index];
     }
 
     protected static void checkKnownType(Class actualType, Class knownType, Class baseType){
@@ -1594,41 +1619,41 @@ public class Json{
     // Default serializers
     static{
         // Lists
-        defaultInheritSerializers.put(Seq.class,
+        putInheritSerializer(defaultInheritSerializers, Seq.class,
             StructSerializer.list(Seq.class, Seq::new, StructLayout.array, Seq::each, Seq::add));
-        defaultInheritSerializers.put(Queue.class,
+        putInheritSerializer(defaultInheritSerializers, Queue.class,
             StructSerializer.list(Queue.class, Queue::new, StructLayout.array, Queue::each, Queue::addLast));
-        defaultInheritSerializers.put(IntSeq.class,
+        putInheritSerializer(defaultInheritSerializers, IntSeq.class,
             StructSerializer.list(IntSeq.class, IntSeq::new, StructLayout.array, Integer.class,
             (s, c) -> s.each(c::get), (s, v) -> s.add((Integer)v)));
-        defaultInheritSerializers.put(ObjectSet.class,
+        putInheritSerializer(defaultInheritSerializers, ObjectSet.class,
             StructSerializer.list(ObjectSet.class, ObjectSet::new, StructLayout.values, ObjectSet::each, ObjectSet::add));
-        defaultInheritSerializers.put(IntSet.class,
+        putInheritSerializer(defaultInheritSerializers, IntSet.class,
             StructSerializer.list(IntSet.class, IntSet::new, StructLayout.values, Integer.class,
             (s, c) -> s.each(c::get), (s, v) -> s.add((Integer)v)));
-        defaultInheritSerializers.put(Collection.class,
+        putInheritSerializer(defaultInheritSerializers, Collection.class,
             StructSerializer.<Collection>list(ArrayList.class, ArrayList::new, StructLayout.items, Structs::each, Collection::add));
 
         // Maps
-        defaultInheritSerializers.put(ObjectMap.class,
+        putInheritSerializer(defaultInheritSerializers, ObjectMap.class,
             StructSerializer.map(ObjectMap.class, ObjectMap::new, ObjectMap::each, ObjectMap::put));
-        defaultInheritSerializers.put(ArrayMap.class,
+        putInheritSerializer(defaultInheritSerializers, ArrayMap.class,
             StructSerializer.map(ArrayMap.class, ArrayMap::new, ArrayMap::each, ArrayMap::put));
-        defaultInheritSerializers.put(Map.class,
+        putInheritSerializer(defaultInheritSerializers, Map.class,
             StructSerializer.<Map>map(HashMap.class, HashMap::new,
             (m, c) -> Structs.each(((Map<?, ?>)m).entrySet(), o -> c.get(o.getKey(), o.getValue())), Map::put));
-        defaultInheritSerializers.put(IntMap.class,
+        putInheritSerializer(defaultInheritSerializers, IntMap.class,
             StructSerializer.map(IntMap.class, IntMap::new, Integer.class, null, IntMap::each,
             (m, k, v) -> m.put((Integer)k, v)));
-        defaultInheritSerializers.put(ObjectIntMap.class,
+        putInheritSerializer(defaultInheritSerializers, ObjectIntMap.class,
             StructSerializer.map(ObjectIntMap.class, ObjectIntMap::new, null, Integer.class, ObjectIntMap::each,
             (m, k, v) -> m.put(k, (Integer)v)));
-        defaultInheritSerializers.put(ObjectFloatMap.class,
+        putInheritSerializer(defaultInheritSerializers, ObjectFloatMap.class,
             StructSerializer.map(ObjectFloatMap.class, ObjectFloatMap::new, null, Float.class, ObjectFloatMap::each,
             (m, k, v) -> m.put(k, (Float)v)));
 
         // Enum
-        defaultInheritSerializers.put(Enum.class, new Serializer<Enum>(){
+        putInheritSerializer(defaultInheritSerializers, Enum.class, new Serializer<Enum>(){
             @Override
             public void write(Json json, Enum object, Class knownType, Class elementType, Class keyType){
                 Class actualType = findActualType(object.getClass());
