@@ -1166,7 +1166,6 @@ public class Json{
             boolean serializable = JsonSerializable.class.isAssignableFrom(type);
 
             // A Serializable may be read as an array, string, etc, even though it will be written as an object.
-                Object object = newInstance(type);
             if(serializer == null && !(serializable && jsonData.isObject()))
                 serializer = getInheritSerializer(type);
             if(serializer != null)

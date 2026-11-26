@@ -33,7 +33,8 @@ java{
 }
 
 jar.archiveVersion = ''
-javadoc.options.addStringOption('Xdoclint:none', '-quiet')
+javadoc.options.addBooleanOption('Xdoclint:none', true)
+javadoc.options.addStringOption('Xmaxwarns', '1')
 test.testLogging.showStandardStreams = true
 
 
@@ -49,31 +50,31 @@ indra{
         target(8)
         minimumToolchain(8)
     }
-      
+
     apache2License()
     publishReleasesTo('xpdustry', 'https://maven.xpdustry.com/releases')
-  
+
     github('xpdustry', rootProject.name){
         ci(true)
         issues(true)
         scm(true)
     }
-  
+
     configurePublications{
         from components.java
-    
+
         pom{
             organization{
                 name = 'Xpdustry'
                 url = 'https://www.xpdustry.com'
             }
-      
+
             developers{
                 developer{
                   id = 'Anuken'
                   url = 'https://github.com/Anuken'
                 }
-                
+
                 developer{
                   id = 'ZetaMap'
                   url = 'https://github.com/ZetaMap'

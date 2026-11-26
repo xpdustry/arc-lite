@@ -10,6 +10,7 @@ public class MockApplication implements Application{
         return new Seq<>(0);
     }
 
+    @SuppressWarnings("deprecation")
     @Override
     public ApplicationType getType(){
         return ApplicationType.headless;
